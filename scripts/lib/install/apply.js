@@ -448,7 +448,8 @@ function openCodeActivationCandidates(plan, previousOperations) {
 
 function activationIsInactive(kind, operation, content) {
   if (kind === 'plugin') {
-    return content.toString('utf8') === getDisabledOpenCodePluginContent();
+    return content.toString('utf8')
+      === getDisabledOpenCodePluginContent(operation.sourceRelativePath || operation.destinationPath);
   }
   const text = content.toString('utf8');
   const relativePath = operation.sourceRelativePath || operation.destinationPath;

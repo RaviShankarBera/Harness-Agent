@@ -9,7 +9,7 @@ const { createFileSystemLoader } = require('./helpers/load-with-file-system');
 const fileSystem = { ...fs };
 const load = createFileSystemLoader(fileSystem);
 const { applyInstallPlan } = load(require.resolve('../../scripts/lib/install/apply'));
-const { parseJsoncConfig, withHookConsent } = require('../../scripts/lib/install/hook-consent');
+const { parseJsoncConfig, withHookConsent, getDisabledOpenCodePluginContent } = require('../../scripts/lib/install/hook-consent');
 const { createInstallState, readInstallState, writeInstallState } = require('../../scripts/lib/install-state');
 const { buildDoctorReport, repairInstalledStates } = load(require.resolve('../../scripts/lib/install-lifecycle'));
 
@@ -326,7 +326,7 @@ function runTests() {
     assert.strictEqual(result.status, 'repaired', result.error);
     assert.strictEqual(result.stateRefreshed, true);
     assert.strictEqual(fs.readFileSync(path.join(value.targetRoot, 'plugins/ecc-hooks.ts'), 'utf8'),
-      'export default async () => ({});\n');
+      getDisabledOpenCodePluginContent('ecc-hooks.ts'));
     assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(value.targetRoot, 'opencode.json'))),
       { plugin: [], userSetting: true });
     assert.strictEqual(fs.existsSync(`${value.installStatePath}.ecc.lock`), false);
@@ -348,7 +348,7 @@ function runTests() {
           assert.ok(!operations.some(operation => operation.destinationPath === destination), 'Do not adopt a user config');
         }
         assert.strictEqual(fs.readFileSync(path.join(value.targetRoot, 'plugins/ecc-hooks.ts'), 'utf8'),
-          'export default async () => ({});\n');
+          getDisabledOpenCodePluginContent('ecc-hooks.ts'));
         assert.strictEqual(fs.existsSync(`${value.installStatePath}.ecc.lock`), false);
       }));
     }
@@ -446,7 +446,7 @@ function runTests() {
       // must never adopt the preserved user config after this refusal.
       const checkpoint = readInstallState(value.installStatePath);
       assert.deepStrictEqual(checkpoint.operations.map(operation => operation.destinationPath), [plugin]);
-      assert.strictEqual(fs.readFileSync(plugin, 'utf8'), 'export default async () => ({});\n');
+      assert.strictEqual(fs.readFileSync(plugin, 'utf8'), getDisabledOpenCodePluginContent('ecc-hooks.ts'));
       assert.strictEqual(checkpoint.operations[0].contentSha256, sha256(fs.readFileSync(plugin)));
       assert.strictEqual(fs.existsSync(`${value.installStatePath}.ecc.lock`), false);
     }));
@@ -629,7 +629,7 @@ function runTests() {
         operations: [...value.basePlan.operations, operation] }, consent);
       assert.strictEqual(applyInstallPlan(plan).applied, true);
       assert.strictEqual(fs.readFileSync(destinationPath, 'utf8'), consent === 'enabled'
-        ? content : 'export default async () => ({});\n');
+        ? content : getDisabledOpenCodePluginContent(destinationPath));
     }));
   }
   test('nested package metadata fails before writing and never receives a JavaScript tombstone', () => fixture(value => {
