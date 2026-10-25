@@ -66,13 +66,15 @@ function redactCredentialValues(text) {
 function redactSecrets(value) {
   // The credential values cover what governance-capture detects, since tool
   // output such as `cat .env` lands in these summaries too.
+  // Redact complete assignments before the legacy password fallback can
+  // truncate a quoted value at its first space and expose the remainder.
   return redactCredentialValues(String(value || '')
     .replace(/\n/g, ' ')
     .replace(/--token[= ][^ ]*/g, '--token=<REDACTED>')
     .replace(/Authorization:[: ]*[^ ]*[: ]*[^ ]*/gi, 'Authorization:<REDACTED>')
     .replace(/\bAKIA[A-Z0-9]{16}\b/g, '<REDACTED>')
-    .replace(/\bASIA[A-Z0-9]{16}\b/g, '<REDACTED>')
-    .replace(/password[= ][^ ]*/gi, 'password=<REDACTED>'))
+    .replace(/\bASIA[A-Z0-9]{16}\b/g, '<REDACTED>'))
+    .replace(/password[= ][^ ]*/gi, 'password=<REDACTED>')
     .replace(/\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '<REDACTED>')
     .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----.*/g, '<REDACTED>')
     .replace(/\bgh[pousr]_[A-Za-z0-9_]+\b/g, '<REDACTED>')
