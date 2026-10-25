@@ -98,11 +98,20 @@ function isInside(dir, file) {
 /**
  * Sessions holding feedback the agent has never seen, oldest activity first.
  */
+// Save and Finish ends a UI session in the same request that queues the
+// final handoff, so an ended UI session still delivers an undelivered finish.
+// Other ended sessions only hold stale feedback and stay quiet.
+function deliverable(session) {
+  if (session.status !== 'ended') return true;
+  return session.mode === 'ui' && session.pendingFeedback.some(item => item && item.kind === 'finish');
+}
+
 function pendingSessions(state, cwd, env = process.env) {
   const scopeAll = String(env.ECC_PLAN_CANVAS_STOP_SCOPE || '').trim().toLowerCase() === 'all';
   return Object.values((state && state.sessions) || {})
-    .filter(session => session && validSessionKey(session.key) && typeof session.file === 'string' && session.file.length > 0 && session.status !== 'ended')
+    .filter(session => session && validSessionKey(session.key) && typeof session.file === 'string' && session.file.length > 0)
     .filter(session => Array.isArray(session.pendingFeedback) && session.pendingFeedback.length > 0)
+    .filter(deliverable)
     .filter(session => (scopeAll ? true : isInside(cwd, session.file)))
     .sort((a, b) => String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')));
 }

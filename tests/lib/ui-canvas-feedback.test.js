@@ -143,6 +143,9 @@ test('exportPathsFor keeps the artifact extension and sits beside it', () => {
   assert.strictEqual(paths.exportPath, path.join('/work/previews', 'card.edited.html'));
   assert.strictEqual(paths.editsPath, path.join('/work/previews', 'card.edits.json'));
   assert.strictEqual(feedback.exportPathsFor('/work/card').exportPath, path.join('/work', 'card.edited.html'));
+  const batch = feedback.exportPathsFor('/work/previews/card.html', 'mf3k2x-9a1c');
+  assert.strictEqual(batch.exportPath, path.join('/work/previews', 'card.apply-mf3k2x-9a1c.edited.html'));
+  assert.strictEqual(batch.editsPath, path.join('/work/previews', 'card.apply-mf3k2x-9a1c.edits.json'));
 });
 
 test('writeExport writes markup and edit log atomically and rejects bad snapshots', () => {

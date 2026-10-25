@@ -48,6 +48,14 @@ test('agentDescriptor reports the name and the project basename only', () => {
   assert.deepStrictEqual(descriptor, { name: 'Codex', project: 'shop' });
 });
 
+test('agentFromParam reads a JSON descriptor or a bare harness name', () => {
+  assert.strictEqual(identity.agentFromParam(null), null);
+  assert.strictEqual(identity.agentFromParam(''), null);
+  assert.deepStrictEqual(identity.agentFromParam('{"name":"Codex","project":"ecc"}'), { name: 'Codex', project: 'ecc' });
+  assert.deepStrictEqual(identity.agentFromParam('Claude Code'), { name: 'Claude Code' });
+  assert.strictEqual(identity.agentFromParam('{"name":""}'), null);
+});
+
 test('sanitizeAgentDescriptor drops junk and clamps lengths', () => {
   assert.strictEqual(identity.sanitizeAgentDescriptor(null), null);
   assert.strictEqual(identity.sanitizeAgentDescriptor({ name: '   ' }), null);

@@ -348,7 +348,7 @@ function cmdPending({ stateDir }) {
     status: waiting.length ? 'pending' : 'clear',
     sessions: waiting,
     next_step: waiting.length
-      ? 'Run `ecc-plan-canvas await <file>` for each file above to receive the messages.'
+      ? 'Run the `resume` command of each session above to receive its messages.'
       : 'No canvas feedback is waiting.'
   };
 }

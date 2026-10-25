@@ -194,8 +194,11 @@ async function main() {
       assert.strictEqual(item.editCount, 2);
       assert.ok(!('html' in item), 'html must not travel with the item');
       // The session file is canonicalized (realpath), so the export sits beside the real path.
-      assert.strictEqual(item.exportPath, path.join(fs.realpathSync(tmp), 'card.edited.html'));
-      assert.strictEqual(item.editsPath, path.join(fs.realpathSync(tmp), 'card.edits.json'));
+      // Each Apply batch gets its own snapshot pair; only Finish owns card.edited.html.
+      const real = fs.realpathSync(tmp);
+      assert.match(path.basename(item.exportPath), /^card\.apply-[a-z0-9]+-[0-9a-f]{4}\.edited\.html$/);
+      assert.strictEqual(path.dirname(item.exportPath), real);
+      assert.strictEqual(item.editsPath, item.exportPath.replace(/\.edited\.html$/, '.edits.json'));
       assert.strictEqual(fs.readFileSync(item.exportPath, 'utf8'), html);
       const log = JSON.parse(fs.readFileSync(item.editsPath, 'utf8'));
       assert.strictEqual(log.kind, 'edits');
@@ -203,6 +206,18 @@ async function main() {
       assert.deepStrictEqual(log.viewport, { preset: 'mobile', width: 393, height: 852 });
       assert.ok(!JSON.stringify(JSON.parse(fs.readFileSync(store.stateFile, 'utf8'))).includes('<article'), 'sessions.json never stores markup');
       assert.strictEqual(store.get(key).chat.at(-1).text, 'Applied 2 edits to the preview');
+    });
+
+    await test('a second queued Apply never rewrites the first batch snapshot', async () => {
+      const first = await request(port, 'POST', `/api/session/${key}/feedback`, { items: [{ kind: 'edits', html: '<html><body>A</body></html>', edits: [] }] });
+      const second = await request(port, 'POST', `/api/session/${key}/feedback`, { items: [{ kind: 'edits', html: '<html><body>B</body></html>', edits: [] }] });
+      assert.strictEqual(first.statusCode, 200);
+      assert.strictEqual(second.statusCode, 200);
+      const drained = await request(port, 'GET', `/api/await?key=${key}&timeoutMs=10`);
+      const [a, b] = drained.body.items;
+      assert.notStrictEqual(a.exportPath, b.exportPath);
+      assert.strictEqual(fs.readFileSync(a.exportPath, 'utf8'), '<html><body>A</body></html>');
+      assert.strictEqual(fs.readFileSync(b.exportPath, 'utf8'), '<html><body>B</body></html>');
     });
 
     await test('edits batches without a snapshot or with an oversized one are refused', async () => {
@@ -231,8 +246,13 @@ async function main() {
       assert.strictEqual(fs.readFileSync(item.exportPath, 'utf8').trim(), '<!DOCTYPE html>\n<html><body>done</body></html>');
       assert.strictEqual(store.get(key).status, 'ended');
       assert.strictEqual(store.get(key).chat.at(-1).text, 'Saved and finished with 1 edit: ship it');
+      assert.strictEqual(path.basename(item.exportPath), 'card.edited.html');
       const again = await request(port, 'GET', `/api/await?key=${key}&timeoutMs=10`);
       assert.deepStrictEqual(again.body, { status: 'ended', endedBy: 'user' });
+      // A stale tab applying after Finish is refused before anything is written.
+      const stale = await request(port, 'POST', `/api/session/${key}/feedback`, { items: [{ kind: 'finish', html: '<html><body>stale</body></html>', edits: [] }] });
+      assert.strictEqual(stale.statusCode, 409);
+      assert.strictEqual(fs.readFileSync(item.exportPath, 'utf8').trim(), '<!DOCTYPE html>\n<html><body>done</body></html>');
     });
 
     await test('plan sessions still render Plan Canvas and reject ui-only kinds', async () => {

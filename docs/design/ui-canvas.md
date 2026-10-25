@@ -64,8 +64,14 @@ and `install-modules.json` (workflow-quality), `manifests/pi-core.json` exclusio
 
 ## Protocol
 
-Shell and editor talk only over `postMessage` (the frame is sandboxed without
-`allow-same-origin`, exactly like Plan Canvas, so a hostile mockup cannot reach the loopback API).
+Shell and editor talk only over `postMessage`. The frame is sandboxed without
+`allow-same-origin`, exactly like Plan Canvas, so the mockup runs with an opaque origin. That alone
+does not stop its scripts from making requests; the server does: every request must carry an
+allowed loopback `Host`, and any `Origin` header must name an allowed loopback host, so requests
+from the frame (which send `Origin: null`) get `403`, including the preflight a JSON POST needs. The
+shell accepts only messages whose source is the frame window and only the `uc:*` types listed
+below; a mockup script can post those too, so it can describe or alter its own edits (the agent
+wrote that mockup) but cannot read or post anything else in the shell.
 
 Editor → shell: `uc:ready`, `uc:selection` (descriptor, style report, breadcrumb), `uc:edits`
 (log plus undo/redo availability), `uc:status`, `uc:toggle-mode`, `uc:scroll`, `uc:export`.

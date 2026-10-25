@@ -15,6 +15,7 @@
  * written next to the artifact and only its path travels with the item.
  */
 
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -247,14 +248,21 @@ function normalizeUiFeedbackItem(raw, counter) {
   return item;
 }
 
-function exportPathsFor(artifactFile) {
+// Finish writes the canonical <name>.edited.html and <name>.edits.json. Each
+// Apply batch gets its own <name>.apply-<batch>.* pair so a later batch never
+// rewrites the snapshot an earlier queued item points at.
+function exportPathsFor(artifactFile, batch = '') {
   const dir = path.dirname(artifactFile);
   const ext = path.extname(artifactFile);
-  const base = path.basename(artifactFile, ext);
+  const base = path.basename(artifactFile, ext) + (batch ? `.apply-${batch}` : '');
   return {
     exportPath: path.join(dir, `${base}.edited${ext || '.html'}`),
     editsPath: path.join(dir, `${base}.edits.json`)
   };
+}
+
+function newBatchId() {
+  return `${Date.now().toString(36)}-${crypto.randomBytes(2).toString('hex')}`;
 }
 
 function writeAtomic(file, data) {
@@ -273,7 +281,7 @@ function writeExport(artifactFile, { html, edits = [], viewport = null, kind = '
   if (bytes > MAX_HTML_BYTES) {
     throw Object.assign(new Error(`html snapshot exceeds ${MAX_HTML_BYTES} bytes`), { code: 'EUI_HTML_TOO_LARGE' });
   }
-  const { exportPath, editsPath } = exportPathsFor(artifactFile);
+  const { exportPath, editsPath } = exportPathsFor(artifactFile, kind === 'finish' ? '' : newBatchId());
   writeAtomic(exportPath, html);
   writeAtomic(
     editsPath,

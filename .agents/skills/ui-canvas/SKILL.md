@@ -106,15 +106,17 @@ listening" so the human knows you are connected.
 ```json
 { "kind": "edits", "editCount": 3, "edits": [ { "kind": "resize", "selector": "img.art", "width": 220, "height": 220, "before": { "width": 260, "height": 260 } } ],
   "viewport": { "preset": "mobile", "width": 393, "height": 852 },
-  "exportPath": "/abs/.claude/previews/pricing-card.edited.html", "editsPath": "/abs/.claude/previews/pricing-card.edits.json" }
+  "exportPath": "/abs/.claude/previews/pricing-card.apply-mf3k2x-9a1c.edited.html", "editsPath": "/abs/.claude/previews/pricing-card.apply-mf3k2x-9a1c.edits.json" }
 ```
 
 - `edits` means the human clicked **Apply to file**: they want their hand
   edits written into the mockup now. Replace the mockup file with the
   contents of `exportPath` (it is the full DOM they are looking at, with
   their inline-style changes), tidy it into real CSS if it is messy, keep it
-  self-contained, and reply. The canvas clears its pending list, so nothing
-  is applied twice.
+  self-contained, and reply. Each Apply writes its own
+  `<name>.apply-<batch>.*` pair, so a queued earlier batch keeps its own
+  snapshot. The canvas keeps showing the applied edits until your write to
+  the mockup reloads it, then drops them, so nothing is applied twice.
 
 ```json
 { "kind": "finish", "editCount": 5, "edits": [ "…" ], "viewport": { "preset": "desktop", "width": 1412, "height": 806 },
@@ -179,8 +181,10 @@ never the other way, so media queries are honest.
   only from an `edits` or `finish` payload, from `exportPath`.
 - Reply in the canvas (`await --reply`), not only in the terminal, while the
   session is open.
-- The exported `.edited.html` and `.edits.json` are review artifacts, not
-  production code. Do not commit them unless the repo keeps previews.
+- The exported `.edited.html` and `.edits.json` files (including the
+  per-Apply `.apply-<batch>.*` pairs) are review artifacts, not production
+  code. Do not commit them unless the repo keeps previews; delete the
+  `.apply-*` pairs once the mockup is updated.
 - The server is loopback-only, idles out after 30 minutes
   (`ECC_PLAN_CANVAS_IDLE_MS`), and keeps state in `~/.claude/plan-canvas/`
   (`ECC_PLAN_CANVAS_STATE_DIR`). `ECC_CANVAS_AGENT` overrides the detected

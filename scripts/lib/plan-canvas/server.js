@@ -24,17 +24,13 @@ const {
   renderMarkdownArtifactHtml,
   renderSessionListHtml
 } = require('./ui');
-const { sanitizeAgentDescriptor } = require('./agent-identity');
-const { uiEditorJs } = require('../ui-canvas/editor');
-const { renderUiCanvasHtml, uiCanvasCss, uiClientJs } = require('../ui-canvas/ui');
-const { normalizeEdits, writeExport } = require('../ui-canvas/feedback');
+const { agentFromParam } = require('./agent-identity');
+const { exportErrorResponse, materializeUiExports, renderUiCanvasHtml, serveUiAsset } = require('../ui-canvas/server-routes');
 
 const DEFAULT_PORT = 4517;
 const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
-// UI Canvas ships a serialized DOM snapshot with its edit batches, and a
-// mockup with inline images can run to a few megabytes; the snapshot itself is
-// capped separately in ui-canvas/feedback.js.
+// Sized for UI Canvas DOM snapshots (capped separately in ui-canvas/feedback.js).
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 // How long the "agent is thinking" indicator survives without the agent
 // checking back in, before presence decays to the honest queued/waiting.
@@ -234,25 +230,6 @@ function readSiblingAsset(baseDir, resolved) {
   }
   if (primaryError) throw primaryError;
   return { data, realTarget };
-}
-
-// UI Canvas edit batches arrive with the full DOM snapshot. Write it (and the
-// edit log) next to the artifact before the item is queued, and hand the agent
-// paths instead of megabytes of markup. Chat items pass through untouched.
-function materializeUiExports(session, items) {
-  return items.map(item => {
-    if (!item || typeof item !== 'object' || (item.kind !== 'edits' && item.kind !== 'finish')) return item;
-    // The on-disk log holds the same normalized edits the agent receives.
-    const edits = normalizeEdits(item.edits);
-    const written = writeExport(session.file, {
-      html: item.html,
-      edits,
-      viewport: item.viewport || null,
-      kind: item.kind
-    });
-    const { html: _html, ...rest } = item;
-    return { ...rest, edits, exportPath: written.exportPath, editsPath: written.editsPath };
-  });
 }
 
 function createPlanCanvasServer({
@@ -476,12 +453,8 @@ function createPlanCanvasServer({
       const session = keyParam ? store.get(keyParam) : store.findByFile(file);
       if (!session) return sendJson(res, 200, { status: 'missing' });
       const key = session.key;
-      const agentParam = url.searchParams.get('agent');
-      if (agentParam) {
-        let descriptor = null;
-        try { descriptor = sanitizeAgentDescriptor(JSON.parse(agentParam)); } catch { descriptor = sanitizeAgentDescriptor({ name: agentParam }); }
-        if (descriptor) store.setAgent(key, descriptor);
-      }
+      const descriptor = agentFromParam(url.searchParams.get('agent'));
+      if (descriptor) store.setAgent(key, descriptor);
       const timeoutRaw = url.searchParams.get('timeoutMs');
       const timeoutMs = timeoutRaw === null ? null : Math.max(0, Number.parseInt(timeoutRaw, 10) || 0);
 
@@ -564,13 +537,15 @@ function createPlanCanvasServer({
       if (action === 'feedback') {
         const body = await readJsonBody(req);
         let items = Array.isArray(body.items) ? body.items : [];
+        // Checked before any export is written: a stale tab must not replace
+        // the design a finished session already handed over.
+        if (session.status === 'ended') return sendJson(res, 409, { error: 'session already ended' });
         if (session.mode === 'ui') {
           try {
             items = materializeUiExports(session, items);
           } catch (error) {
-            if (error.code === 'EUI_HTML_TOO_LARGE') return sendJson(res, 413, { error: 'html snapshot too large' });
-            if (error.code === 'EUI_HTML_MISSING') return sendJson(res, 400, { error: 'edits and finish items need an html snapshot' });
-            return sendJson(res, 500, { error: `could not write the export next to the artifact: ${error.message}` });
+            const failure = exportErrorResponse(error);
+            return sendJson(res, failure.status, { error: failure.error });
           }
         }
         const result = store.queueFeedback(key, items, { endSession: Boolean(body.endSession) });
@@ -754,18 +729,7 @@ function createPlanCanvasServer({
           res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store' });
           return res.end(artifactSdkJs());
         }
-        if (req.method === 'GET' && pathname === '/ui-canvas.css') {
-          res.writeHead(200, { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'no-store' });
-          return res.end(uiCanvasCss());
-        }
-        if (req.method === 'GET' && pathname === '/ui-client.js') {
-          res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store' });
-          return res.end(uiClientJs());
-        }
-        if (req.method === 'GET' && pathname === '/ui-editor.js') {
-          res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-store' });
-          return res.end(uiEditorJs());
-        }
+        if (req.method === 'GET' && serveUiAsset(pathname, res)) return undefined;
         const canvasMatch = pathname.match(/^\/canvas\/([a-f0-9]{12})$/);
         if (req.method === 'GET' && canvasMatch) {
           const session = store.get(canvasMatch[1]);

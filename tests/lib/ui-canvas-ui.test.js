@@ -131,6 +131,47 @@ test('inspector inlines the tested field helpers and drops the old chip strip', 
   assert.ok(!html.includes('type="number"'), 'no browser number spinners remain');
 });
 
+test('gesture release hands the finished gesture to its handler', () => {
+  // Regression: mouseup cleared the shared gesture before endResize/endDrag
+  // read it, so every handle resize, reorder and Alt-drag threw on release.
+  const editor = uiEditorJs();
+  assert.ok(editor.includes('function endResize(g) {') && editor.includes('function endDrag(g) {'));
+  assert.ok(editor.includes('endResize(g);') && editor.includes('endDrag(g);'));
+  const endResize = editor.slice(editor.indexOf('function endResize(g) {'), editor.indexOf('function axisOf('));
+  const endDrag = editor.slice(editor.indexOf('function endDrag(g) {'), editor.indexOf('function nudgeBy('));
+  for (const body of [endResize, endDrag]) assert.ok(!/\bgesture\b/.test(body), 'finish handlers must not read the cleared gesture');
+});
+
+test('editor reports border-radius from real corner properties', () => {
+  const editor = uiEditorJs();
+  assert.ok(editor.includes("['border-radius', radiusSummary(cs)]"));
+  assert.ok(editor.includes('cs.borderTopLeftRadius') && !editor.includes("sides(cs, 'border', '-radius')"));
+});
+
+test('applied edits keep replaying until the agent rewrites the file', () => {
+  const client = uiClientJs();
+  const editor = uiEditorJs();
+  assert.ok(client.includes("type: 'uc:restore', baked: submitted, edits"), 'reloads replay submitted edits');
+  assert.ok(/addEventListener\('reload', \(\) => \{\s*submitted = \[\];/.test(client), 'a file change drops them');
+  assert.ok(editor.includes('var baked = Array.isArray(payload.baked) ? payload.baked : [];'));
+});
+
+test('viewports from the bootstrap and sessionStorage are clamped', () => {
+  const client = uiClientJs();
+  assert.ok(client.includes('const clampDim = n => Math.max(100, Math.min(20000'));
+  assert.ok(client.includes('let vp = storedViewport(stored.viewport) || parseViewport('));
+});
+
+test('every ui-canvas source file stays under the 800-line limit', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const dir = path.join(__dirname, '..', '..', 'scripts', 'lib', 'ui-canvas');
+  for (const name of fs.readdirSync(dir)) {
+    const lines = fs.readFileSync(path.join(dir, name), 'utf8').split('\n').length;
+    assert.ok(lines <= 800, name + ' has ' + lines + ' lines');
+  }
+});
+
 test('theme toggle keeps its icons instead of overwriting them with text', () => {
   const client = uiClientJs();
   assert.ok(!client.includes("$('themeBtn').textContent"), 'textContent would wipe the sun and moon icons');

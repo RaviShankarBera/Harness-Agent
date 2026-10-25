@@ -50,4 +50,14 @@ function sanitizeAgentDescriptor(raw) {
   return descriptor;
 }
 
-module.exports = { HARNESS_MARKERS, agentDescriptor, detectAgentName, sanitizeAgentDescriptor };
+// The ?agent= query value: a JSON descriptor, or a bare harness name.
+function agentFromParam(raw) {
+  if (!raw) return null;
+  try {
+    return sanitizeAgentDescriptor(JSON.parse(raw));
+  } catch {
+    return sanitizeAgentDescriptor({ name: raw });
+  }
+}
+
+module.exports = { HARNESS_MARKERS, agentDescriptor, agentFromParam, detectAgentName, sanitizeAgentDescriptor };

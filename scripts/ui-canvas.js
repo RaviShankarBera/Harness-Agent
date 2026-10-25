@@ -45,7 +45,8 @@ function usage() {
     '  typing: --state <thinking|typing|idle>  Defaults to typing',
     '  server: --port <n> --host <h>',
     '',
-    'Finish payloads name <file>.edited.html (final markup) and <file>.edits.json (edit log) next to the artifact.',
+    'Finish payloads name <file>.edited.html (final markup) and <file>.edits.json (edit log) next to the artifact;',
+    'each Apply batch writes its own <file>.apply-<batch>.edited.html and .edits.json pair.',
     'Environment: ECC_PLAN_CANVAS_PORT, ECC_PLAN_CANVAS_STATE_DIR, ECC_PLAN_CANVAS_IDLE_MS, ECC_CANVAS_AGENT'
   ].join('\n');
 }
