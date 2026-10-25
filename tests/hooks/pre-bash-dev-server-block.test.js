@@ -49,6 +49,18 @@ function runTests() {
       assert.ok(result.stderr.includes('BLOCKED'), `Expected stderr to contain BLOCKED, got: ${result.stderr}`);
     }) ? passed++ : failed++);
 
+    (test('blocks dev launch after an ANSI-C escaped apostrophe', () => {
+      for (const command of ["export x=$'it\\'s here'; npm run dev", "export x=$'it\\'s here'\nnpm run dev"]) {
+        const result = runScript(command);
+        assert.strictEqual(result.code, 2, `Expected exit code 2 for ${command}, got ${result.code}`);
+      }
+    }) ? passed++ : failed++);
+
+    (test('allows a dev command mentioned inside an ANSI-C quoted string', () => {
+      const result = runScript("echo $'x\\' && npm run dev'");
+      assert.strictEqual(result.code, 0, `Expected exit code 0, got ${result.code}`);
+    }) ? passed++ : failed++);
+
     (test('blocks pnpm dev (exit code 2)', () => {
       const result = runScript('pnpm dev');
       assert.strictEqual(result.code, 2, `Expected exit code 2, got ${result.code}`);

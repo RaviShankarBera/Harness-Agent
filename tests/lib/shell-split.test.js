@@ -1,5 +1,6 @@
 'use strict';
 const assert = require('assert');
+const { spawnSync } = require('child_process');
 const { splitShellSegments } = require('../../scripts/lib/shell-split');
 
 console.log('=== Testing shell-split.js ===\n');
@@ -72,6 +73,23 @@ test('escaped double quote inside double quotes', () => {
 test('a backslash inside single quotes cannot escape the closing quote', () => {
   assert.deepStrictEqual(splitShellSegments("echo 'x\\'; npm run dev"), ["echo 'x\\'", 'npm run dev']);
   assert.deepStrictEqual(splitShellSegments("echo 'x\\'\nnpm run dev"), ["echo 'x\\'", 'npm run dev']);
+});
+test('ANSI-C quotes keep escaped apostrophes and shell operators as data', () => {
+  const actualLaunch = "export x=$'it\\'s here'; npm run dev";
+  const literalInstruction = "echo $'x\\' && npm run dev'";
+  assert.deepStrictEqual(splitShellSegments(actualLaunch), ["export x=$'it\\'s here'", 'npm run dev']);
+  assert.deepStrictEqual(splitShellSegments("export x=$'it\\'s here'\nnpm run dev"), ["export x=$'it\\'s here'", 'npm run dev']);
+  assert.deepStrictEqual(splitShellSegments(literalInstruction), [literalInstruction]);
+  if (process.platform !== 'win32') {
+    const syntax = spawnSync('/bin/bash', ['-n', '-c', actualLaunch], { encoding: 'utf8' });
+    assert.strictEqual(syntax.status, 0, syntax.stderr);
+    const value = spawnSync('/bin/bash', ['-c', "export x=$'it\\'s here'; printf '%s' \"$x\""], { encoding: 'utf8' });
+    assert.strictEqual(value.status, 0, value.stderr);
+    assert.strictEqual(value.stdout, "it's here");
+    const text = spawnSync('/bin/bash', ['-c', literalInstruction], { encoding: 'utf8' });
+    assert.strictEqual(text.status, 0, text.stderr);
+    assert.strictEqual(text.stdout, "x' && npm run dev\n");
+  }
 });
 
 // Escaped operators outside quotes

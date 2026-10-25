@@ -819,10 +819,10 @@ function commandRole(words, budget) {
 // `{ echo 'git push --no-verify'; } | sh` feeds sh like `echo ... | sh`. The
 // writes form one stream, so they are also read joined in order:
 // `{ printf 'git pu'; printf 'sh --no-verify'; } | sh`.
-function groupSources(scope, budget) {
+function groupSources(scope, budget, inheritedDescriptors) {
   const written = [];
   for (const inner of scanShell(scope.body, budget).commands) {
-    if (!inner.pipeTo) written.push(...pipelineSources(inner, budget));
+    if (!inner.pipeTo) written.push(...pipelineSources(inner, budget, inheritedDescriptors));
   }
   if (written.length > 1) written.push({ text: written.map(source => source.text).join(''), opaque: written.some(source => source.opaque) });
   return written;
@@ -855,8 +855,8 @@ function printfText(words) {
 // stdout. Track descriptor copies in order; suppress a source only when we can
 // prove stdout ends at the original stderr or /dev/null. Unknown destinations
 // stay conservative so a path or inherited descriptor cannot hide a bypass.
-function stdoutMayReachPipe(redirects, budget) {
-  const descriptors = new Map([[1, 'pipe'], [2, 'stderr']]);
+function outputDescriptors(redirects, budget, inheritedDescriptors) {
+  const descriptors = new Map(inheritedDescriptors || [[1, 'pipe'], [2, 'stderr']]);
   for (const redirect of redirects) {
     budget.spend();
     const fd = redirect.fd ?? 1;
@@ -868,16 +868,25 @@ function stdoutMayReachPipe(redirects, budget) {
       else descriptors.set(fd, target === '-' ? 'away' : 'unknown');
     }
   }
+  return descriptors;
+}
+
+function stdoutMayReachPipe(descriptors) {
   return !['away', 'stderr'].includes(descriptors.get(1));
 }
 
 // Literal producers only. Unmodeled transformations remain conservative rather
 // than executing a formatter, interpreter, shell or user-supplied command.
-function pipelineSources(command, budget) {
-  if (!stdoutMayReachPipe(command.redirects, budget)) return [];
+function pipelineSources(command, budget, inheritedDescriptors) {
+  const descriptors = outputDescriptors(command.redirects, budget, inheritedDescriptors);
+  const stdoutReachesPipe = stdoutMayReachPipe(descriptors);
+  // A group can still write through stderr after its stdout is redirected:
+  // `{ echo bypass >&2; } 2>&1 >/dev/null | sh` feeds the pipe via fd 2.
+  if (!stdoutReachesPipe && !command.closedScope) return [];
   const sources = [];
   for (let current = command; current; current = current.pipeFrom) {
-    if (current.closedScope) sources.push(...groupSources(current.closedScope, budget));
+    if (current.closedScope) sources.push(...groupSources(current.closedScope, budget, descriptors));
+    if (!stdoutReachesPipe) continue;
     budget.spend(current.words.length + 1);
     const { words } = executableWords(current.words, budget);
     for (const word of words) budget.spend(word.value.length + 3);

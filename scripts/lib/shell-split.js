@@ -239,15 +239,17 @@ function splitShellSegments(command) {
   for (let i = 0; i < command.length; i++) {
     const ch = command[i];
 
-    // Bash treats every character inside single quotes literally. Inside
-    // double quotes, a backslash escapes only $, `, ", \\ and a newline.
+    // Ordinary single quotes are literal. ANSI-C $'...' quotes also allow
+    // backslash escapes, including an apostrophe that must not close them.
+    // Inside double quotes, a backslash escapes only $, `, ", \\ and newline.
     if (quote) {
-      if (quote === '"' && ch === '\\' && i + 1 < command.length && '$`"\\\n'.includes(command[i + 1])) {
+      if (ch === '\\' && i + 1 < command.length &&
+          (quote === "$'" || (quote === '"' && '$`"\\\n'.includes(command[i + 1])))) {
         current += ch + command[i + 1];
         i++;
         continue;
       }
-      if (ch === quote) quote = null;
+      if (ch === (quote === "$'" ? "'" : quote)) quote = null;
       current += ch;
       continue;
     }
@@ -259,7 +261,13 @@ function splitShellSegments(command) {
       continue;
     }
 
-    // Opening quote
+    // Opening quote. Keep ANSI-C quoting distinct from literal single quotes.
+    if (ch === '$' && command[i + 1] === "'") {
+      quote = "$'";
+      current += "$'";
+      i++;
+      continue;
+    }
     if (ch === '"' || ch === "'") {
       quote = ch;
       current += ch;
