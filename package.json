@@ -115,6 +115,7 @@
     "scripts/ci/scan-supply-chain-iocs.js",
     "scripts/ci/supply-chain-advisory-sources.js",
     "scripts/ci/validate-skill-host-compat.js",
+    "scripts/ci/validate-skill-descriptions.js",
     "scripts/ci/validate-skills.js",
     "scripts/consult.js",
     "scripts/profile.js",

@@ -78,6 +78,19 @@ const tests = [
     assert.match(result.stdout, /Validated 1 skill descriptions/);
   }],
 
+  ['accepts keep-chomp indicators and keeps blank lines inside the block', () => {
+    const withBlank = '---\nname: delta\ndescription: |+\n  First paragraph stays.\n\n  Second paragraph stays.\n---\n\n# Delta\n';
+    const result = runWithFixture({
+      skills: { delta: withBlank },
+      budget: { maxDescriptionChars: 600, maxListingTokens: 1000, targetListingTokens: 100 },
+    });
+    assert.strictEqual(result.status, 0, result.stderr);
+    const { readFrontmatter } = require('../../scripts/ci/validate-skill-descriptions');
+    const parsed = readFrontmatter(withBlank);
+    assert.match(parsed.description, /First paragraph stays\./);
+    assert.match(parsed.description, /Second paragraph stays\./);
+  }],
+
   ['reports the gap to the declared profile budget without failing', () => {
     const result = runWithFixture({
       skills: { alpha: shortSkill },

@@ -27,7 +27,6 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '../..');
 const SKILLS_DIR = path.join(ROOT, 'skills');
-const BUDGET_PATH = path.join(ROOT, 'manifests/skill-description-budget.json');
 
 /**
  * Read a SKILL.md frontmatter block.
@@ -50,13 +49,21 @@ function readFrontmatter(content) {
     const [, key, raw] = entry;
     const value = raw.trim();
 
-    if (value === '>' || value === '|' || value === '>-' || value === '|-') {
+    if (/^[>|][+-]?$/.test(value)) {
       const block = [];
-      while (index + 1 < lines.length && /^\s+\S/.test(lines[index + 1])) {
-        block.push(lines[index + 1].trim());
+      while (index + 1 < lines.length) {
+        const next = lines[index + 1];
+        if (next.trim() === '') {
+          block.push('');
+          index += 1;
+          continue;
+        }
+        if (!/^\s+\S/.test(next)) break;
+        block.push(next.trim());
         index += 1;
       }
-      values[key] = key === 'description' ? block.join(' ') : block.join(' ');
+      while (block.length > 0 && block[block.length - 1] === '') block.pop();
+      values[key] = block.join(' ');
       continue;
     }
 
@@ -156,8 +163,8 @@ function checkDescriptions(root = ROOT) {
   if (totalTokens > maxListingTokens) {
     errors.push(
       `skill listing is ${totalTokens} tokens, ceiling is ${maxListingTokens} `
-      + `(+${totalTokens - maxListingTokens}). Trim descriptions, or lower the ceiling `
-      + 'if you trimmed on purpose.',
+      + `(+${totalTokens - maxListingTokens}). Trim descriptions until the total fits `
+      + 'the committed ceiling.',
     );
   }
 
