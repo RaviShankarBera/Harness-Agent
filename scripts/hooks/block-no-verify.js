@@ -871,21 +871,27 @@ function outputDescriptors(redirects, budget, inheritedDescriptors) {
   return descriptors;
 }
 
-function stdoutMayReachPipe(descriptors) {
-  return !['away', 'stderr'].includes(descriptors.get(1));
+function stdoutMayReachPipe(descriptors, downstreamReachesPipe) {
+  const destination = descriptors.get(1);
+  return destination === 'pipe' || destination === 'unknown' ||
+    (destination === 'innerPipe' && downstreamReachesPipe);
 }
 
 // Literal producers only. Unmodeled transformations remain conservative rather
 // than executing a formatter, interpreter, shell or user-supplied command.
 function pipelineSources(command, budget, inheritedDescriptors) {
-  const descriptors = outputDescriptors(command.redirects, budget, inheritedDescriptors);
-  const stdoutReachesPipe = stdoutMayReachPipe(descriptors);
-  // A group can still write through stderr after its stdout is redirected:
-  // `{ echo bypass >&2; } 2>&1 >/dev/null | sh` feeds the pipe via fd 2.
-  if (!stdoutReachesPipe && !command.closedScope) return [];
   const sources = [];
+  let downstreamReachesPipe = true;
   for (let current = command; current; current = current.pipeFrom) {
+    // Earlier pipeline stages write to the next stage, not directly to this
+    // consumer. Their data reaches it only if the downstream stages can pass
+    // that data on. A redirect to inherited stderr may still reach it directly.
+    const stageDescriptors = new Map(inheritedDescriptors || [[1, 'pipe'], [2, 'stderr']]);
+    if (current !== command) stageDescriptors.set(1, 'innerPipe');
+    const descriptors = outputDescriptors(current.redirects, budget, stageDescriptors);
+    const stdoutReachesPipe = stdoutMayReachPipe(descriptors, downstreamReachesPipe);
     if (current.closedScope) sources.push(...groupSources(current.closedScope, budget, descriptors));
+    downstreamReachesPipe = stdoutReachesPipe;
     if (!stdoutReachesPipe) continue;
     budget.spend(current.words.length + 1);
     const { words } = executableWords(current.words, budget);
