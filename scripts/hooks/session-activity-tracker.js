@@ -44,6 +44,8 @@ const ASSIGNMENT = /(?<![\w.-])([\w.-]+)(["']?)\s*([:=])\s*/g;
 // the next space.
 const JSON_FIELD_VALUE = /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[{[].*|[^\s,;}\]"']+/y;
 const TEXT_VALUE = /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[{[].*|\S+/y;
+const TOKEN_OPTION = /--token(?:=|[ \t]+)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\S+)/g;
+const PASSWORD_FALLBACK = /password(?:=|[ \t]+)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\S+)/gi;
 
 function redactCredentialValues(text) {
   let redacted = '';
@@ -66,15 +68,15 @@ function redactCredentialValues(text) {
 function redactSecrets(value) {
   // The credential values cover what governance-capture detects, since tool
   // output such as `cat .env` lands in these summaries too.
-  // Redact complete assignments before the legacy password fallback can
-  // truncate a quoted value at its first space and expose the remainder.
+  // Consume quoted option values and whole Authorization header lines before
+  // normalizing newlines. Partial legacy replacements can expose a suffix.
   return redactCredentialValues(String(value || '')
+    .replace(TOKEN_OPTION, '--token=<REDACTED>')
+    .replace(/Authorization:[^\r\n]*/gi, 'Authorization:<REDACTED>')
     .replace(/\n/g, ' ')
-    .replace(/--token[= ][^ ]*/g, '--token=<REDACTED>')
-    .replace(/Authorization:[: ]*[^ ]*[: ]*[^ ]*/gi, 'Authorization:<REDACTED>')
     .replace(/\bAKIA[A-Z0-9]{16}\b/g, '<REDACTED>')
     .replace(/\bASIA[A-Z0-9]{16}\b/g, '<REDACTED>'))
-    .replace(/password[= ][^ ]*/gi, 'password=<REDACTED>')
+    .replace(PASSWORD_FALLBACK, 'password=<REDACTED>')
     .replace(/\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, '<REDACTED>')
     .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----.*/g, '<REDACTED>')
     .replace(/\bgh[pousr]_[A-Za-z0-9_]+\b/g, '<REDACTED>')
