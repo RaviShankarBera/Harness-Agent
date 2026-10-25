@@ -407,7 +407,7 @@ function runTests() {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }) ? passed++ : failed++);
 
-  (test('does not persist any part of quoted password values from Claude tool responses', () => {
+  const passwordPersistencePassed = test('does not persist any part of quoted password values from Claude tool responses', () => {
     for (const [name, toolResponse] of [
       ['string', 'DB_PASSWORD="first second"\n'],
       ['Bash stdout', { stdout: "DB_PASSWORD='third fourth'\n", stderr: '' }],
@@ -432,7 +432,43 @@ function runTests() {
         fs.rmSync(tmpHome, { recursive: true, force: true });
       }
     }
-  }) ? passed++ : failed++);
+  });
+  passed += Number(passwordPersistencePassed);
+  failed += Number(!passwordPersistencePassed);
+
+  const legacyCredentialPersistencePassed = test('does not persist quoted token or Authorization header suffixes', () => {
+    for (const [name, stdout, fragments] of [
+      ['quoted token option', '--token="fifth sixth"', ['fifth', 'sixth']],
+      ['spaced token option', '--token "seventh eighth"', ['seventh', 'eighth']],
+      ['quoted Authorization header', 'Authorization: Bearer "ninth tenth"\nstatus=ok', ['ninth', 'tenth']],
+      ['bare Authorization header', 'Authorization: Bearer eleventh twelfth\nstatus=ok', ['eleventh', 'twelfth']],
+      ['spaced password label', 'password "thirteenth fourteenth"', ['thirteenth', 'fourteenth']],
+      ['quoted API key assignment', 'API_KEY="fifteenth sixteenth"', ['fifteenth', 'sixteenth']],
+    ]) {
+      const tmpHome = makeTempDir();
+      try {
+        const result = runScript({
+          hook_event_name: 'PostToolUse',
+          session_id: 'redaction-test',
+          tool_name: 'Bash',
+          tool_input: { command: 'printf safe' },
+          tool_response: { stdout, stderr: '' },
+        }, withTempHome(tmpHome));
+        assert.strictEqual(result.code, 0, name);
+        const metrics = fs.readFileSync(path.join(tmpHome, '.claude', 'metrics', 'tool-usage.jsonl'), 'utf8');
+        const row = JSON.parse(metrics.trim());
+        assert.ok(row.output_summary.includes('<REDACTED>'), name);
+        for (const fragment of fragments) {
+          assert.ok(!metrics.includes(fragment), `${name} persisted credential fragment ${fragment}`);
+        }
+        if (name.includes('Authorization')) assert.ok(row.output_summary.includes('status=ok'), name);
+      } finally {
+        fs.rmSync(tmpHome, { recursive: true, force: true });
+      }
+    }
+  });
+  passed += Number(legacyCredentialPersistencePassed);
+  failed += Number(!legacyCredentialPersistencePassed);
 
   (test('reads session_id from stdin JSON when no session env var is set', () => {
     // Claude Code does not set CLAUDE_SESSION_ID for hook subprocesses in
