@@ -135,6 +135,7 @@ Exclude anything that:
 | `orch-pipeline` | Claude-Code-only orch-* orchestration |
 | `orch-refine-code` | Claude-Code-only orch-* orchestration |
 | `plan-canvas` | Claude-Code-only plan canvas server |
+| `ui-canvas` | Claude-Code-only ui canvas server |
 | `plan-orchestrate` | ECC orchestration prompt generator over the full catalog |
 | `plankton-code-quality` | Claude-Code-only write-time hooks |
 | `prediction-market-oracle-research` | venture-specific prediction-market-* |
@@ -252,6 +253,7 @@ Exclude anything that:
 | `orch-refine-code` | Claude-Code-only orch-* orchestration |
 | `orch-review` | Claude-Code-only orch-* orchestration |
 | `plan-canvas` | Claude-Code-only plan canvas server |
+| `ui-canvas` | Claude-Code-only ui canvas server |
 | `pm2` | PM2 runtime process manager ops |
 | `project-init` | ECC install-manifest onboarding plan |
 | `projects` | instincts (continuous-learning) |

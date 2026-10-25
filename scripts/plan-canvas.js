@@ -28,6 +28,7 @@ const {
   sessionKeyFor
 } = require('./lib/plan-canvas/sessions');
 const { openBrowser } = require('./lib/platform-launch');
+const { agentDescriptor } = require('./lib/plan-canvas/agent-identity');
 const {
   DEFAULT_HOST,
   createPlanCanvasServer,
@@ -77,6 +78,31 @@ function valueAfter(args, name) {
   const index = args.indexOf(name);
   return index >= 0 && index + 1 < args.length ? args[index + 1] : null;
 }
+
+function binForMode(mode) {
+  return mode === 'ui' ? 'ecc-ui-canvas' : 'ecc-plan-canvas';
+}
+
+// A profile is the only thing that differs between the Plan Canvas CLI and
+// the UI Canvas CLI (scripts/ui-canvas.js): which session mode `open` asks
+// for, what the bin is called in agent-facing hints, and the next-step text
+// that teaches the agent what to do with each payload. The server, state
+// dir, and transport are shared.
+const PLAN_PROFILE = {
+  mode: 'plan',
+  bin: 'ecc-plan-canvas',
+  tag: 'plan-canvas',
+  usage,
+  nextSteps: {
+    open: 'Run `ecc-plan-canvas await <file>` and leave it running; it returns when the human sends feedback, a verdict, or ends the session.',
+    feedback: result => (result.sessionEnded
+      ? 'The user sent this feedback and ended the session. Address it and report in chat; do not reopen the canvas uninvited.'
+      : 'Address the feedback, then run `ecc-plan-canvas await <file> --reply "<what you changed>"` to answer in the canvas and keep listening.'),
+    ended: result => (result.endedBy === 'user'
+      ? 'The user ended this review. Stop polling and deliver any remaining updates in chat; do not reopen uninvited.'
+      : 'Session ended. Stop polling.')
+  }
+};
 
 function serverInfoPath(stateDir) {
   return path.join(stateDir, 'server.json');
@@ -171,9 +197,9 @@ function sleep(ms) {
 // Start (or reuse) the detached canvas server and return its port. A version
 // mismatch after an ECC update restarts the server so browser and CLI never
 // disagree about the protocol.
-async function ensureServer({ stateDir, port }) {
+async function ensureServer({ stateDir, port, force = false }) {
   const health = await healthCheck(port);
-  if (health && health.version === VERSION) return port;
+  if (health && health.version === VERSION && !force) return port;
   if (health) {
     await request(port, 'POST', '/shutdown').catch(() => {});
     for (let i = 0; i < 20 && (await healthCheck(port)); i++) await sleep(100);
@@ -209,14 +235,24 @@ async function cmdStatus({ stateDir, port }) {
   return { server: `http://${DEFAULT_HOST}:${port}`, version: health.version, sessions: sessions.body.sessions };
 }
 
-async function cmdOpen(file, args, { stateDir, port }) {
+async function cmdOpen(file, args, { stateDir, port }, profile = PLAN_PROFILE) {
   if (!file) throw new Error('open requires a file path');
   if (!fs.existsSync(path.resolve(file))) throw new Error(`artifact not found: ${file}`);
+  if (profile.validateFile) profile.validateFile(file);
   await ensureServer({ stateDir, port });
-  const res = await request(port, 'POST', '/api/sessions', {
+  const body = {
     file: path.resolve(file),
-    reopen: args.includes('--reopen')
-  });
+    reopen: args.includes('--reopen'),
+    ...(profile.openBody ? profile.openBody(args) : {})
+  };
+  let res = await request(port, 'POST', '/api/sessions', body);
+  // A server from an older install reports the same version string but does
+  // not know this profile's mode (it answers without one). Restart it on the
+  // current code and open again so the browser never gets the wrong canvas.
+  if (res.statusCode === 200 && profile.mode !== 'plan' && res.body.mode !== profile.mode) {
+    await ensureServer({ stateDir, port, force: true });
+    res = await request(port, 'POST', '/api/sessions', body);
+  }
   if (res.statusCode === 409) return res.body;
   if (res.statusCode !== 200) throw new Error(res.body.error || `open failed (HTTP ${res.statusCode})`);
   const url = `http://${DEFAULT_HOST}:${port}${res.body.url}`;
@@ -227,15 +263,16 @@ async function cmdOpen(file, args, { stateDir, port }) {
     url,
     browser: launched ? 'launch requested' : 'not opened',
     browserReason: launchResult.reason,
-    next_step:
-      'Run `ecc-plan-canvas await <file>` and leave it running; it returns when the human sends feedback, a verdict, or ends the session.'
+    next_step: profile.nextSteps.open
   };
 }
 
-function awaitRequest(port, key, timeoutMs) {
+function awaitRequest(port, key, timeoutMs, agent = null) {
   if (!/^[a-f0-9]{12}$/.test(key)) throw new Error('invalid plan-canvas session key');
   const params = new URLSearchParams({ key });
   if (timeoutMs !== null) params.set('timeoutMs', String(timeoutMs));
+  // Tell the browser who is listening so its presence pill can name the agent.
+  if (agent) params.set('agent', JSON.stringify(agent));
   return new Promise((resolve, reject) => {
     const req = http.request(
       requestOptions(port, 'GET', `/api/await?${params}`, {}),
@@ -259,7 +296,7 @@ function awaitRequest(port, key, timeoutMs) {
   });
 }
 
-async function cmdAwait(file, args, { stateDir, port }) {
+async function cmdAwait(file, args, { stateDir, port }, profile = PLAN_PROFILE) {
   if (!file) throw new Error('await requires a file path');
   if (!(await healthCheck(port))) {
     return { status: 'no-server', hint: 'no canvas server is running; use `open` first', stateDir };
@@ -271,17 +308,12 @@ async function cmdAwait(file, args, { stateDir, port }) {
   }
   const timeoutRaw = valueAfter(args, '--timeout-ms');
   const timeoutMs = timeoutRaw === null ? null : Number.parseInt(timeoutRaw, 10) || 0;
-  process.stderr.write('[plan-canvas] waiting for human feedback... leave this running (re-run if interrupted; queued feedback is never lost)\n');
-  const result = await awaitRequest(port, sessionKeyFor(canonicalizeArtifactPath(file)), timeoutMs);
+  process.stderr.write(`[${profile.tag}] waiting for human feedback... leave this running (re-run if interrupted; queued feedback is never lost)\n`);
+  const result = await awaitRequest(port, sessionKeyFor(canonicalizeArtifactPath(file)), timeoutMs, agentDescriptor());
   if (result.status === 'feedback') {
-    result.next_step = result.sessionEnded
-      ? 'The user sent this feedback and ended the session. Address it and report in chat; do not reopen the canvas uninvited.'
-      : 'Address the feedback, then run `ecc-plan-canvas await <file> --reply "<what you changed>"` to answer in the canvas and keep listening.';
+    result.next_step = profile.nextSteps.feedback(result, file);
   } else if (result.status === 'ended') {
-    result.next_step =
-      result.endedBy === 'user'
-        ? 'The user ended this review. Stop polling and deliver any remaining updates in chat; do not reopen uninvited.'
-        : 'Session ended. Stop polling.';
+    result.next_step = profile.nextSteps.ended(result, file);
   }
   return result;
 }
@@ -305,7 +337,13 @@ function cmdPending({ stateDir }) {
   const waiting = store
     .list()
     .filter(session => session.status !== 'ended' && session.pending > 0)
-    .map(session => ({ file: session.file, pending: session.pending, updatedAt: session.updatedAt }));
+    .map(session => ({
+      file: session.file,
+      mode: session.mode || 'plan',
+      pending: session.pending,
+      updatedAt: session.updatedAt,
+      resume: `${binForMode(session.mode)} await ${JSON.stringify(session.file)}`
+    }));
   return {
     status: waiting.length ? 'pending' : 'clear',
     sessions: waiting,
@@ -366,10 +404,10 @@ async function cmdServer(args, { stateDir, port }) {
   return new Promise(() => {}); // run until a signal or idle shutdown
 }
 
-async function main(argv = process.argv.slice(2)) {
+async function main(argv = process.argv.slice(2), profile = PLAN_PROFILE) {
   const args = argv.slice();
   if (args.includes('--help') || args.includes('-h')) {
-    process.stdout.write(`${usage()}\n`);
+    process.stdout.write(`${profile.usage()}\n`);
     return 0;
   }
   const command = args[0] && !args[0].startsWith('--') ? args.shift() : null;
@@ -379,15 +417,15 @@ async function main(argv = process.argv.slice(2)) {
   const context = { stateDir, port: (recorded && recorded.port) || resolvePort() };
   try {
     if (command === null) output(await cmdStatus(context));
-    else if (command === 'open') output(await cmdOpen(args[0], args, context));
-    else if (command === 'await') output(await cmdAwait(args[0], args, context));
+    else if (command === 'open') output(await cmdOpen(args[0], args, context, profile));
+    else if (command === 'await') output(await cmdAwait(args[0], args, context, profile));
     else if (command === 'pending') output(cmdPending(context));
     else if (command === 'typing') output(await cmdTyping(args[0], args, context));
     else if (command === 'end') output(await cmdEnd(args[0], context));
     else if (command === 'stop') output(await cmdStop(context));
     else if (command === 'server') await cmdServer(args, context);
     else {
-      process.stderr.write(`Unknown command: ${command}\n\n${usage()}\n`);
+      process.stderr.write(`Unknown command: ${command}\n\n${profile.usage()}\n`);
       return 1;
     }
     return 0;
@@ -403,4 +441,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main, ensureServer, healthCheck };
+module.exports = { PLAN_PROFILE, binForMode, main, ensureServer, healthCheck, valueAfter };
