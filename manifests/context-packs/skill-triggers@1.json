@@ -1,7 +1,7 @@
 {
   "coverage": {
-    "skills": 311,
-    "withTriggers": 33
+    "skills": 312,
+    "withTriggers": 34
   },
   "generatedAt": "2026-09-24T23:51:22.784Z",
   "id": "skill-triggers@1",
@@ -10,7 +10,7 @@
     "id": "hand-seeded",
     "source": "manual-curation-pending-regeneration"
   },
-  "registryDigest": "846ac8826dd91e81cd838c2b55d7be536af427eb453efa127501f891e5778ff8",
+  "registryDigest": "6009c40ea3e8fcb2e65fc8a7bb11dfd15298941cc6549c5788e9be00dc6c6802",
   "schemaVersion": 1,
   "triggers": {
     "skill:agent-runtime-gateway-smoke-test": [
@@ -283,6 +283,16 @@
       "regression test first",
       "write a regression test"
     ],
+    "skill:ui-canvas": [
+      "preview the component before committing",
+      "show me a mockup in the browser",
+      "ui canvas",
+      "let me resize and move elements myself",
+      "edit the mockup by hand then build it",
+      "check the design on mobile and desktop",
+      "approve the ui before you implement it",
+      "lovable style visual editing"
+    ],
     "skill:verification-loop": [
       "pre pr checks",
       "verification report",
@@ -291,5 +301,5 @@
       "before creating a pr"
     ]
   },
-  "triggersDigest": "054898acb769893c46e5bd7037141f7be83fb775515ea1dbb52fb1c18aca19e6"
+  "triggersDigest": "296375253fe5f4fe1278024d2dc9ead550c5eb464581fef9692ee34f841ee816"
 }
