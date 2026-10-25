@@ -245,6 +245,9 @@ const executingPayloads = [
   ['pipe split printf writes ending in a newline escape to sh', '{ printf "git "; printf "push --no-verify\\n"; } | sh'],
   ['pipe printf %s arguments joined to sh', "printf '%s' 'git pu' 'sh --no-verify' | sh"],
   ['pipe echo with a trailing -n operand to sh', "echo 'git commit -m x' -n | sh"],
+  ['still blocks group output when only stderr is redirected', "{ echo 'git commit --no-verify -m x' 2>/dev/null; } | bash"],
+  ['still blocks when stderr was copied from the pipe before stdout copied to it', "{ echo 'git commit --no-verify -m x' 2>&1 >&2; } | bash"],
+  ['unknown descriptor restoration stays conservative', "{ echo 'git commit --no-verify -m x' >/dev/null 1>&3; } | bash"],
   ['execute data through xargs and bash -c', "printf '%s\\n' 'git commit -n -m x' | xargs -I CMD bash -c CMD"],
   ['execute command substitution text through bash', "echo '$(git commit -n -m x)' | bash"],
   ['execute bash here-string', "bash <<< 'git commit -n -m x'"],
@@ -281,6 +284,19 @@ for (const [name, command] of executingPayloads) {
   })) passed++; else failed++;
 }
 
+if (process.platform !== 'win32') {
+  if (test('Bash sends redirected group output away from the receiving pipe', () => {
+    for (const [redirect, stdout] of [
+      ['>/dev/null', ''], ['>&2', ''], ['1>/dev/null', ''],
+      ['2>/dev/null', 'marker'], ['2>&1 >&2', 'marker']
+    ]) {
+      const result = spawnSync('/bin/bash', ['-c', `{ printf marker ${redirect}; } | cat`], { encoding: 'utf8' });
+      assert.strictEqual(result.status, 0, result.stderr);
+      assert.strictEqual(result.stdout, stdout, redirect);
+    }
+  })) passed++; else failed++;
+}
+
 const nonLeakingPayloads = [
   // Inside double quotes a backslash before dot remains literal, so decoded executable is git\.exe, not git.exe.
   ['allows the distinct executable with a literal escaped dot', '"git""\\.exe" commit -n -m x'],
@@ -288,6 +304,9 @@ const nonLeakingPayloads = [
   ['allows quoted echo data (corrected author expectation)', 'echo "git commit -n"'],
   ['allows two echo lines in a group piped to sh', "{ echo 'git pu'; echo 'sh --no-verify'; } | sh"],
   ['allows an echo -n operand that does not join two group lines', "{ echo 'git pu' -n; echo 'sh --no-verify'; } | sh"],
+  ['allows grouped stdout sent to /dev/null instead of bash', "{ echo 'git commit --no-verify -m x' >/dev/null; } | bash"],
+  ['allows grouped stdout sent to stderr instead of bash', "{ echo 'git commit --no-verify -m x' >&2; } | bash"],
+  ['allows explicit stdout descriptor sent to /dev/null', "{ echo 'git commit --no-verify -m x' 1>/dev/null; } | bash"],
   ['python heredoc string with later bash -n', 'python3 - <<\'PY\'\nold="git add -A\\nif ! git diff --cached --quiet; then\\n  git commit -q -m \\"vault sync"\nPY\nbash -n vault-sync.sh'],
   ['assignment string with later bash -n', 'old="git commit -q -m x"; bash -n x.sh'],
   ['plain commit followed by later-line bash -n', 'git commit -m x\nbash -n s.sh'],

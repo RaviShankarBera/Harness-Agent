@@ -52,7 +52,10 @@ function readWord(command, start) {
     ANSI_C_QUOTED_RE.lastIndex = i;
     const ansiC = !quote && ch === '$' ? ANSI_C_QUOTED_RE.exec(command) : null;
     if (quote) {
-      if (ch === quote) quote = null;
+      if (quote === '"' && ch === '\\' && i + 1 < command.length && '$`"\\\n'.includes(command[i + 1])) {
+        const next = command[++i];
+        if (next !== '\n') word += next;
+      } else if (ch === quote) quote = null;
       else word += ch;
     } else if (ansiC) {
       // $'...' decodes its escapes, so $'E\x4fF' is EOF
@@ -68,8 +71,11 @@ function readWord(command, start) {
       // $"..." is double quoting; the $ is not part of the word
       continue;
     } else if (ch === '\\' && i + 1 < command.length) {
-      word += command[++i];
-      quoted = true;
+      const next = command[++i];
+      if (next !== '\n') {
+        word += next;
+        quoted = true;
+      }
     } else if (/[ \t\n|&;()<>]/.test(ch)) {
       break;
     } else {
@@ -233,9 +239,10 @@ function splitShellSegments(command) {
   for (let i = 0; i < command.length; i++) {
     const ch = command[i];
 
-    // Inside quotes: handle escapes and closing quote
+    // Bash treats every character inside single quotes literally. Inside
+    // double quotes, a backslash escapes only $, `, ", \\ and a newline.
     if (quote) {
-      if (ch === '\\' && i + 1 < command.length) {
+      if (quote === '"' && ch === '\\' && i + 1 < command.length && '$`"\\\n'.includes(command[i + 1])) {
         current += ch + command[i + 1];
         i++;
         continue;

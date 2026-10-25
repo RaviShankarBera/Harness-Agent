@@ -327,7 +327,7 @@ function createScan(input, budget) {
   const rootScope = { parent: null, isolated: false, conditional: false };
   const scan = {
     input, budget, commands: [], nested: [], pendingHeredocs: [], rootScope,
-    scope: rootScope, current: null, word: null, quote: null, pendingRedirect: null, i: 0
+    scope: rootScope, current: null, word: null, quote: null, pendingRedirect: null, pendingRedirectFd: null, i: 0
   };
   scan.current = newCommand(scan, null);
   return scan;
@@ -343,10 +343,11 @@ function flushWord(scan) {
   word.end = scan.i;
   word.raw = scan.input.slice(word.start, scan.i);
   if (scan.pendingRedirect) {
-    const redirect = { operator: scan.pendingRedirect, word, body: '' };
+    const redirect = { operator: scan.pendingRedirect, fd: scan.pendingRedirectFd, word, body: '' };
     current.redirects.push(redirect);
     if (scan.pendingRedirect === '<<' || scan.pendingRedirect === '<<-') scan.pendingHeredocs.push({ redirect, owner: current });
     scan.pendingRedirect = null;
+    scan.pendingRedirectFd = null;
   } else current.words.push(word);
   scan.word = null;
 }
@@ -365,6 +366,7 @@ function flushCommand(scan, pipe = false, background = false) {
   if (previous.words.length || previous.redirects.length) scan.commands.push(previous);
   scan.current = newCommand(scan, pipe ? previous : null);
   scan.pendingRedirect = null;
+  scan.pendingRedirectFd = null;
 }
 
 function consumeHeredocs(scan) {
@@ -479,19 +481,25 @@ function scanOperator(scan, c, braceKeyword) {
   if (c === '\n') consumeHeredocs(scan);
 }
 
-// An immediately adjacent numeric word is a descriptor, not an argv word.
+// An immediately adjacent unquoted numeric word is a descriptor, not argv.
 function dropDescriptorWord(scan) {
-  if (scan.word && /^\d+$/.test(scan.word.value)) scan.word = null;
+  if (scan.word && !scan.word.quoted && /^\d+$/.test(scan.word.value)) {
+    const descriptor = Number(scan.word.value);
+    scan.word = null;
+    return descriptor;
+  }
+  return null;
 }
 
 function queueHeredoc(scan, delimiter) {
-  dropDescriptorWord(scan);
+  const fd = dropDescriptorWord(scan);
   flushWord(scan);
-  const redirect = { operator: delimiter.operator, word: delimiter.word, body: '' };
+  const redirect = { operator: delimiter.operator, fd, word: delimiter.word, body: '' };
   scan.current.redirects.push(redirect);
   scan.pendingHeredocs.push({ redirect, owner: scan.current });
   scan.i = delimiter.end;
   scan.pendingRedirect = null;
+  scan.pendingRedirectFd = null;
 }
 
 function redirectOperator(input, i, c) {
@@ -509,9 +517,10 @@ function scanRedirect(scan, c) {
     const delimiter = heredocDelimiter(input, scan.i, scan.budget);
     if (delimiter) { queueHeredoc(scan, delimiter); return; }
   }
-  dropDescriptorWord(scan);
+  const fd = dropDescriptorWord(scan);
   flushWord(scan);
   scan.pendingRedirect = redirectOperator(input, scan.i, c);
+  scan.pendingRedirectFd = fd;
   scan.i += scan.pendingRedirect.length;
 }
 

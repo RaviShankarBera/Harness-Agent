@@ -851,9 +851,30 @@ function printfText(words) {
   return [decoded, ...words.slice(2).map(word => word.value)].join(' ');
 }
 
+// A grouped producer only feeds the next pipeline stage through its final
+// stdout. Track descriptor copies in order; suppress a source only when we can
+// prove stdout ends at the original stderr or /dev/null. Unknown destinations
+// stay conservative so a path or inherited descriptor cannot hide a bypass.
+function stdoutMayReachPipe(redirects, budget) {
+  const descriptors = new Map([[1, 'pipe'], [2, 'stderr']]);
+  for (const redirect of redirects) {
+    budget.spend();
+    const fd = redirect.fd ?? 1;
+    if (redirect.operator === '>' || redirect.operator === '>>') {
+      descriptors.set(fd, !redirect.word.dynamic && redirect.word.value === '/dev/null' ? 'away' : 'unknown');
+    } else if (redirect.operator === '>&') {
+      const target = redirect.word.value;
+      if (!redirect.word.dynamic && /^\d+$/.test(target)) descriptors.set(fd, descriptors.get(Number(target)) || 'unknown');
+      else descriptors.set(fd, target === '-' ? 'away' : 'unknown');
+    }
+  }
+  return !['away', 'stderr'].includes(descriptors.get(1));
+}
+
 // Literal producers only. Unmodeled transformations remain conservative rather
 // than executing a formatter, interpreter, shell or user-supplied command.
 function pipelineSources(command, budget) {
+  if (!stdoutMayReachPipe(command.redirects, budget)) return [];
   const sources = [];
   for (let current = command; current; current = current.pipeFrom) {
     if (current.closedScope) sources.push(...groupSources(current.closedScope, budget));

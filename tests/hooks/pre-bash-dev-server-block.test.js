@@ -265,6 +265,13 @@ function runTests() {
   // --- Newlines ---
 
   if (!isWindows) {
+    (test('blocks a dev server after a single-quoted backslash and a separator', () => {
+      for (const command of ["echo 'x\\'; npm run dev", "echo 'x\\'\nnpm run dev"]) {
+        const result = runScript(command);
+        assert.strictEqual(result.code, 2, `Expected exit code 2 for ${JSON.stringify(command)}, got ${result.code}`);
+      }
+    }) ? passed++ : failed++);
+
     (test('blocks a dev server started on a later line of a multi-line command', () => {
       const result = runScript('cd app\nnpm run dev');
       assert.strictEqual(result.code, 2, `Expected exit code 2, got ${result.code}`);
@@ -273,6 +280,12 @@ function runTests() {
     (test('blocks a dev server after a here-document with an ANSI-C quoted delimiter', () => {
       const result = runScript("cat <<$'EOF'\ntext\nEOF\nnpm run dev");
       assert.strictEqual(result.code, 2, `Expected exit code 2, got ${result.code}`);
+    }) ? passed++ : failed++);
+
+    (test('blocks a dev server after a here-document with an escaped quote in its delimiter', () => {
+      const command = 'cat <<E"F\\"O"\nEF"O\nnpm run dev';
+      const result = runScript(command);
+      assert.strictEqual(result.code, 2, `Expected exit code 2 for ${JSON.stringify(command)}, got ${result.code}`);
     }) ? passed++ : failed++);
 
     (test('blocks a dev server started by a substitution in a here-document body', () => {
