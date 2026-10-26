@@ -1,7 +1,7 @@
 {
   "coverage": {
-    "skills": 311,
-    "withTriggers": 33
+    "skills": 312,
+    "withTriggers": 34
   },
   "generatedAt": "2026-09-24T23:51:22.784Z",
   "id": "skill-triggers@1",
@@ -10,7 +10,7 @@
     "id": "hand-seeded",
     "source": "manual-curation-pending-regeneration"
   },
-  "registryDigest": "846ac8826dd91e81cd838c2b55d7be536af427eb453efa127501f891e5778ff8",
+  "registryDigest": "6ccfc9c96bfcf1c347a617475517d6016c7b1609ebeea96c6a31f86d632d724b",
   "schemaVersion": 1,
   "triggers": {
     "skill:agent-runtime-gateway-smoke-test": [
@@ -289,7 +289,15 @@
       "quality gates",
       "build lint test coverage",
       "before creating a pr"
+    ],
+    "skill:platform-factory": [
+      "platform factory",
+      "pf freeze",
+      "pf build",
+      "reproducible oci image",
+      "oci sbom provenance",
+      "microvm container"
     ]
   },
-  "triggersDigest": "054898acb769893c46e5bd7037141f7be83fb775515ea1dbb52fb1c18aca19e6"
+  "triggersDigest": "7553ae3515a12f22c0e71c5c0e3b65aed090ba1ef251a9c91381f22fc659e34f"
 }
