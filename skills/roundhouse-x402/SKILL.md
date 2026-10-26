@@ -41,26 +41,41 @@ Do **not** use this skill as a substitute for spending-policy design — keep bu
 
 | Purpose | URL |
 |---------|-----|
-| Site / docs | https://roundhouseai.io |
-| Status | https://roundhouseai.io/status |
-| Agent quickstart | https://roundhouseai.io/get-started.md |
-| Full agent skill (upstream) | https://roundhouseai.io/skill.md |
-| Data API base | https://api.roundhouseai.io/v0 |
+| Site | `https://roundhouseai.io` |
+| Docs | `https://roundhouseai.io/docs` |
+| API docs | `https://roundhouseai.io/docs/api` |
+| Status | `https://roundhouseai.io/status` |
+| Agent quickstart | `https://roundhouseai.io/get-started.md` |
+| Full agent skill (upstream) | `https://roundhouseai.io/skill.md` |
+| Data API base | `https://api.roundhouseai.io/v0` |
 | Service directory (API) | `GET https://api.roundhouseai.io/v0/endpoints?q=<search>` |
-| Catalog document | https://roundhouseai.io/services.json |
+| Catalog document | `https://roundhouseai.io/services.json` |
 | Capability catalogue | `GET https://api.roundhouseai.io/v0/unified` |
 | Agents (ERC-8004) | `GET https://api.roundhouseai.io/v0/agents` |
 | SQL | `POST https://api.roundhouseai.io/v0/sql` |
 | MCP | `POST https://api.roundhouseai.io/v0/mcp` |
+| MCP docs | `https://roundhouseai.io/docs/api/mcp` |
+| MCP server source | `https://github.com/roundhouseai-io/roundhouse-mcp` |
 | MCP Registry name | `io.roundhouseai/roundhouse` |
-| Facilitator | https://x402.roundhouseai.io |
-| Facilitator `/supported` | https://x402.roundhouseai.io/supported |
-| Open-source monorepo | https://github.com/roundhouseai-io/roundhouse |
-| Helper CLI package | https://github.com/roundhouseai-io/x402 (`npm i -g @roundhouseai/x402`) |
+| Facilitator | `https://x402.roundhouseai.io` |
+| Facilitator `/supported` | `https://x402.roundhouseai.io/supported` |
+| Helper CLI package | `https://www.npmjs.com/package/@roundhouseai/x402` (`npm i -g @roundhouseai/x402@0.6.0`, binary `rh-x402`) |
 
 Anonymous without a key: `/v0/unified*`, `/v0/endpoints` (and related catalog docs). Most other `/v0` reads need `Authorization: Bearer rh_live_…`. A $0.01 x402 call to `GET /v0/test/x402` issues a short-lived trial key (identity / proof path, not a throughput tier).
 
 ### MCP config
+
+MCP server source: `https://github.com/roundhouseai-io/roundhouse-mcp`
+
+Run this before either config. It exits non-zero unless `ROUNDHOUSE_API_KEY` is set and starts with the `rh_live_` prefix:
+
+```bash
+# Refuse to configure without a real key in the environment
+case "${ROUNDHOUSE_API_KEY:-}" in
+  rh_live_*) echo "ROUNDHOUSE_API_KEY set" ;;
+  *) echo "ROUNDHOUSE_API_KEY missing or not an rh_live_ key; refusing to configure" >&2; exit 1 ;;
+esac
+```
 
 ```json
 {
@@ -74,30 +89,32 @@ Anonymous without a key: `/v0/unified*`, `/v0/endpoints` (and related catalog do
 }
 ```
 
-Keep the key in an env var — never commit it. Claude Code expands `${VAR}` in `.mcp.json` (including `headers`), so the config above works as-is in a project `.mcp.json` with `ROUNDHOUSE_API_KEY` exported; prefer it over passing the header on the `claude mcp add` command line.
+Keep the key in an env var — never commit a literal key. Claude Code expands `${VAR}` in `.mcp.json` `command`, `args`, `env`, `url`, and `headers`, so the config above works in a project `.mcp.json` when `ROUNDHOUSE_API_KEY` is set. An unset `${ROUNDHOUSE_API_KEY}` with no default does not stop the file from loading: Claude Code warns and leaves the `${ROUNDHOUSE_API_KEY}` text in place (covered credential names in remote `headers` are read as empty instead). Do not add a `${VAR:-default}`. The check above is what refuses a missing or malformed key, so a placeholder is never sent. Prefer this file over passing the header on the `claude mcp add` command line.
 
-Clients that do not expand env vars in `headers` would send the placeholder literally. There, use the client's own secret / env-input mechanism, or bridge through [`mcp-remote`](https://github.com/geelen/mcp-remote), which substitutes `${VAR}` in `--header` from its `env` block:
+Clients that do not expand env vars in config (for example Claude Desktop) should use that client's own secret or input mechanism, or be launched from a shell where `ROUNDHOUSE_API_KEY` is exported. For a stdio bridge, [`mcp-remote`](https://github.com/geelen/mcp-remote) substitutes `${VAR}` in `--header` from the process environment, and its README says to keep spaces out of `args` (Cursor, Codex CLI, and Claude Desktop on Windows split them). Claude Code expands the `env` value before launch:
 
 ```json
 {
   "mcpServers": {
     "roundhouse": {
       "command": "npx",
-      "args": ["mcp-remote", "https://api.roundhouseai.io/v0/mcp", "--header", "Authorization:${AUTH_HEADER}"],
-      "env": { "AUTH_HEADER": "Bearer <your rh_live_ key>" }
+      "args": ["-y", "mcp-remote", "https://api.roundhouseai.io/v0/mcp", "--header", "Authorization:${ROUNDHOUSE_AUTHORIZATION}"],
+      "env": { "ROUNDHOUSE_AUTHORIZATION": "Bearer ${ROUNDHOUSE_API_KEY}" }
     }
   }
 }
 ```
 
-Keep that file out of version control (or use `mcp-remote --header-file` so the key is not in process args).
+That file holds only variable references, so it is safe to commit. If `ROUNDHOUSE_AUTHORIZATION` is unset, `mcp-remote` substitutes an empty string and would connect without a key — run the check first.
 
-Docs: https://roundhouseai.io/docs/api/mcp
+Docs: `https://roundhouseai.io/docs/api/mcp`
 
 ### Helper CLI (`rh-x402`)
 
+Examples were checked against `@roundhouseai/x402` 0.6.0 (`rh-x402 --help` lists `probe`, `discover`, `call` and `--max`). Run `rh-x402 --version` and re-check `--help` if yours differs.
+
 ```bash
-npm i -g @roundhouseai/x402
+npm i -g @roundhouseai/x402@0.6.0
 rh-x402 probe  https://api.example.com/resource     # price only — never pays
 rh-x402 discover web-search                         # cheapest offers for a job
 rh-x402 call   https://api.example.com/resource --max 0.01
@@ -166,7 +183,7 @@ curl -sS https://api.roundhouseai.io/v0/sql \
   -d '{"sql":"select wallet, inbound_count from mv_entity_rollups order by inbound_count desc limit 10"}'
 ```
 
-SQL accepts a single `SELECT`/`WITH` only, with sandbox limits (timeout, row cap, public tables only). See https://roundhouseai.io/docs/api.
+SQL accepts a single `SELECT`/`WITH` only, with sandbox limits (timeout, row cap, public tables only). See `https://roundhouseai.io/docs/api`.
 
 ## Safety notes
 
@@ -177,12 +194,12 @@ SQL accepts a single `SELECT`/`WITH` only, with sandbox limits (timeout, row cap
 - **Confirm facilitator coverage** at `/supported` before mainnet seller traffic.
 - **Network on withdrawals**: fund **USDC on Base** (`eip155:8453`). The same address exists on other EVM chains — wrong-network sends are not spendable here.
 - **Vendor neutrality**: Roundhouse facilitation is free and uncapped per their docs; Roundhouse earns from index access, not a cut of settlements. Still treat it as one hosted option — self-facilitate when you need no third party in the path.
-- **Do not invent market volume** from memory; if totals matter, read live endpoints or https://roundhouseai.io/stats rather than quoting stale figures into agent context.
+- **Do not invent market volume** from memory; if totals matter, read live endpoints or `https://roundhouseai.io/stats` rather than quoting stale figures into agent context.
 
 ## Related skills
 
 - `agent-payment-x402` — payment execution, spending controls, other facilitators (CDP, PayAI, …)
-- Upstream Roundhouse agent docs: https://roundhouseai.io/skill.md and https://roundhouseai.io/llms.txt
+- Upstream Roundhouse agent docs: `https://roundhouseai.io/skill.md` and `https://roundhouseai.io/llms.txt`
 
 ## Translation note
 
