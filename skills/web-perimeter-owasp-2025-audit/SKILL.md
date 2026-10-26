@@ -1,6 +1,6 @@
 ---
 name: web-perimeter-owasp-2025-audit
-description: Passive, non-destructive web perimeter security auditing across OWASP Top 10:2025 ("The 10 Gates"), CDN Unkeyed Header Web Cache Poisoning (X-Forwarded-Host), supply chain manifest exposure, git object dumping prevention (/.git/HEAD), cryptographic headers, and AI crawler boundary governance (llms.txt, robots.txt, HTTP 402). Use when auditing production domains, configuring Cloudflare/Vercel/Nginx edge security, or preparing pre-launch security gates.
+description: Passive, non-destructive web perimeter security auditing across OWASP Top 10:2025 ("The 10 Gates"), CDN Unkeyed Header Web Cache Poisoning (X-Forwarded-Host), supply chain manifest exposure, git object dumping prevention (/.git/HEAD), cryptographic headers, and AI crawler boundary governance (llms.txt, robots.txt). Use when auditing production domains, configuring Cloudflare/Vercel/Nginx edge security, or preparing pre-launch security gates.
 metadata:
   origin: ECC
 ---
@@ -12,41 +12,51 @@ Conduct non-destructive, deterministic perimeter security audits against web app
 ## Important
 
 - Never send destructive payloads, brute-force traffic, or unisolated cache-poisoning probes against shared production cache keys.
-- Always append a unique cache-buster query parameter (`?__cb=<random_hex>`) when testing CDN cache behavior so legitimate visitors are never served a probe response.
+- Before sending any `X-Forwarded-Host` or `X-Forwarded-Scheme` probe against a live target, first verify that the CDN includes query parameters in its cache key (for example, confirming that two distinct query values produce separate `MISS` responses) or run the test against an isolated staging environment. If the CDN strips query strings (`Ignore Query String`), a random query parameter will not isolate the probe from normal visitors.
 - Verify real HTTP responses rather than relying on framework defaults; reverse proxies and CDNs frequently strip or override upstream headers.
 - Treat `403 Forbidden` on directory roots (such as `/.git/`) as insufficient unless direct object paths (`/.git/HEAD`, `/.git/config`) also return `404`/`403`.
+- Keep all checks local by default (`curl` / standard system tools). Only invoke external CLIs or remote scorecard APIs when the user explicitly opts in and approves sharing the target hostname.
 
 ## When to Activate
 
 - Auditing a live domain or staging environment before launch
 - Reviewing Cloudflare, Vercel, AWS CloudFront, Nginx, or Next.js middleware security configurations
 - Investigating CDN Web Cache Poisoning (`X-Forwarded-Host`, `X-Forwarded-Scheme`) or CORS origin reflection
-- Hardening supply chain artifacts (`package-lock.json`, `.npmrc`, source maps) and AI crawler boundaries (`llms.txt`, `robots.txt`, `security.txt`)
+- Hardening supply chain artifacts (`package-lock.json`, registry config files, source maps) and AI crawler boundaries (`llms.txt`, `robots.txt`, `security.txt`)
 
 ## Audit Workflow: The 10 Gates (OWASP Top 10:2025)
 
 ### Gate 1 & Gate 2: Broken Access Control & Security Misconfiguration (A01 / A02:2025)
 
-1. **Direct Git Object & Env Exposure (`git-dumper` vector):**
-   - Disabling directory indexing on `/.git/` (`403 Forbidden`) does **not** stop repository reconstruction if `/.git/HEAD` or `/.git/config` returns `200 OK` with `ref: refs/heads/...`.
-   - Probe `/.git/HEAD`, `/.env`, `/.env.local`, and `/docker-compose.yml` and ensure the response is not `200 OK` with non-HTML content.
+1. **Direct Git Object & Config Artifact Exposure (`git-dumper` vector):**
+   - Disabling directory indexing on `/.git/` (`403 Forbidden`) does **not** prevent repository reconstruction if direct object paths remain readable.
+   - Probe each path using a bounded, file-specific signature without printing sensitive contents:
+     - `/.git/HEAD`: check if status is `200` and the first line matches `^ref: refs/` or a 40-character hex SHA (`^[0-9a-f]{40}$`).
+     - `/.git/config`: check if status is `200` and the body contains `[core]` or `[remote `.
+     - `/docker-compose.yml`: check if status is `200` and the body contains a top-level `services:` block.
+     - Environment configuration paths (such as `/<dotenv-artifact>`): check if status is `200` and lines match `^[A-Z][A-Z0-9_]+=` without `<!DOCTYPE` or `<html`, reporting only a boolean detection signal and never echoing secret values.
 2. **CORS Arbitrary Origin Reflection:**
    - Send `Origin: https://evil-probe.invalid`.
-   - Flag **CRITICAL** if the response reflects `Access-Control-Allow-Origin: https://evil-probe.invalid` together with `Access-Control-Allow-Credentials: true`.
+   - If the response reflects `Access-Control-Allow-Origin: https://evil-probe.invalid` together with `Access-Control-Allow-Credentials: true`, record it as a **HIGH-priority lead**. Verify whether the endpoint serves authenticated or non-public user data in a browser context before escalating to **CRITICAL** (public endpoints that return identical unauthenticated content regardless of cookies are a lower-severity misconfiguration).
 3. **Unkeyed Header Web Cache Poisoning (DoS / Defacement Vector):**
-   - Send an isolated request with a unique cache-buster:
+   - Only after confirming that the target cache keys on query strings (or on an isolated staging host), send a `GET` request with a unique cache-buster and capture both headers and body:
      ```bash
      CB=$(openssl rand -hex 8)
-     curl -sI "https://example.com/?__cb=${CB}" \
+     URL="https://example.com/?__cb=${CB}"
+     # 1) Send isolated GET probe with unkeyed header candidates
+     curl -sS -D /tmp/probe_headers.txt -o /tmp/probe_body.txt "${URL}" \
        -H "X-Forwarded-Host: cache-probe.invalid" \
        -H "X-Forwarded-Scheme: nothttps"
+     # 2) Immediately send a clean follow-up GET to the identical URL without probe headers
+     curl -sS -D /tmp/clean_headers.txt -o /tmp/clean_body.txt "${URL}"
      ```
-   - Flag **HIGH** if `cache-probe.invalid` is reflected in the `Location` header or HTML body, or if an error status (`4xx`/`5xx`) is cached by the CDN (`CF-Cache-Status: HIT/MISS`, `X-Cache: Miss from cloudfront`, or `Cache-Control: public, max-age=...`) without `X-Forwarded-Host` listed in `Vary`.
+   - Flag **MEDIUM (Unkeyed Input Reflection)** if `cache-probe.invalid` appears in `/tmp/probe_headers.txt` (`Location`) or `/tmp/probe_body.txt` on the first request alone.
+   - Escalate to **HIGH (Confirmed Web Cache Poisoning)** only when the subsequent clean follow-up request (`/tmp/clean_headers.txt` and `/tmp/clean_body.txt`) is served from cache (`CF-Cache-Status: HIT`, `X-Cache: Hit from cloudfront`, or `Age > 0`) **and** replays the injected `cache-probe.invalid` reflection or poisoned `4xx`/`5xx` status.
 
 ### Gate 3 & Gate 8: Software Supply Chain & Data Integrity Failures (A03 / A08:2025)
 
 1. **Public Lockfile & Registry Config Exposure:**
-   - Verify that `/package.json`, `/package-lock.json`, `/pnpm-lock.yaml`, `/yarn.lock`, and `/.npmrc` return `404` or `403` in production so attackers cannot harvest your exact dependency tree (SBOM) or registry tokens.
+   - Verify that `/package.json`, `/package-lock.json`, `/pnpm-lock.yaml`, and `/yarn.lock` return `404` or `403` in production so attackers cannot harvest your exact dependency tree (SBOM).
 2. **Production Source Maps & Subresource Integrity (SRI):**
    - Check whether production JavaScript bundles expose `.js.map` files containing original TypeScript/business logic.
    - Require `integrity="sha384-..."` and `crossorigin="anonymous"` on third-party `<script>` tags loaded from external CDNs.
@@ -55,17 +65,21 @@ Conduct non-destructive, deterministic perimeter security audits against web app
 
 1. **Strict Transport Security (HSTS) & TLS Posture:**
    - Verify `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload` (`max-age >= 31536000`) and ensure plain `http://` redirects immediately (`301`/`308`) to `https://`.
-2. **Content-Security-Policy (CSP) without `'unsafe-inline'`:**
+2. **Content-Security-Policy (CSP) Evaluation:**
    - Verify that `Content-Security-Policy` defines `default-src`, `script-src`, `object-src 'none'`, `base-uri 'self'`, and `frame-ancestors`.
-   - Flag policies that allow `script-src 'unsafe-inline'` or `'unsafe-eval'` without cryptographic nonces (`'nonce-...'`) or hashes.
+   - Flag `script-src 'unsafe-eval'` **independently** whenever present, because cryptographic nonces (`'nonce-...'`) and hashes (`'sha256-...'`) only neutralize `'unsafe-inline'` and do **not** disable `eval()` or string-to-code execution.
+   - Flag `script-src 'unsafe-inline'` unless accompanied by `'strict-dynamic'` or per-response nonces/hashes (and no `unsafe-inline` fallback in modern browsers).
 
 ### Gate 6 & Gate 7: Insecure Design, Bot Governance & Auth Hardening (A06 / A07:2025)
 
 1. **AI Crawler & Agentic Boundary Governance:**
-   - Verify whether `robots.txt` explicitly defines rules for AI crawlers (`GPTBot`, `ClaudeBot`, `PerplexityBot`, `Google-Extended`, `CCBot`) and whether `/llms.txt` or `/.well-known/agent.json` declares machine-readable usage and licensing policies.
-   - Note that attackers frequently spoof `User-Agent: ChatGPT-User` to bypass naive WAF rules while probing `/.env` and `/.git/HEAD`; require reverse-DNS or cryptographic signature verification (`@stealthmark/next` / `@stealthmark/express`) before whitelisting agent traffic.
+   - Verify whether `robots.txt` explicitly defines rules for AI crawlers (`GPTBot`, `ClaudeBot`, `PerplexityBot`, `Google-Extended`, `CCBot`) and whether `/llms.txt` or `/.well-known/agent.json` declares machine-readable usage policies.
+   - Because attackers routinely spoof `User-Agent: ChatGPT-User` or `Googlebot` to bypass naive WAF rules, never trust `User-Agent` strings alone: verify crawlers using **Forward-Confirmed Reverse DNS (FCrDNS)** (`PTR` lookup on the client IP followed by a forward `A`/`AAAA` lookup confirming the IP matches the official domain), official published IP CIDR lists (e.g., OpenAI/Anthropic IP ranges), or cryptographic HTTP message signatures (`RFC 9421` Web Bot Auth).
 2. **Session Cookie Hardening:**
-   - Any `Set-Cookie` header issuing a session or auth token must include `HttpOnly`, `Secure`, `SameSite=Lax` (or `Strict`), and an explicit expiration (`Max-Age` or `Expires`).
+   - Every `Set-Cookie` header carrying an authentication or session identifier must include `HttpOnly` and `Secure`.
+   - Evaluate `SameSite` and lifetime against the application's architecture:
+     - Default to `SameSite=Lax` (or `Strict`) for first-party flows; only permit `SameSite=None; Secure` when intentional cross-site embedding/federation is required and explicit anti-CSRF tokens or Fetch Metadata (`Sec-Fetch-Site`) checks are enforced.
+     - Ephemeral browser-session cookies may intentionally omit `Max-Age` and `Expires` so they clear on browser close; persistent cookies must set a bounded `Max-Age` or `Expires` appropriate to the session risk tier.
 
 ### Gate 9 & Gate 10: Telemetry & Exceptional Conditions (A09 / A10:2025)
 
@@ -74,22 +88,21 @@ Conduct non-destructive, deterministic perimeter security audits against web app
 2. **Vulnerability Disclosure Policy (`/.well-known/security.txt`):**
    - Verify RFC 9116 compliance (`Contact:` and non-expired `Expires:` fields) at `/.well-known/security.txt`.
 
-## Automated Verification
+## Optional External Verification (Explicit Opt-In Only)
 
-To run all 28 passive checks against a live domain from the terminal or CI:
+By default, perform all checks locally using the `curl` workflows above so private or staging hostnames never leave the local environment. If the user explicitly authorizes third-party scanning for a public domain, pin the exact CLI package version before execution:
 
 ```bash
-# Instant passive audit via CLI
-npx @stealthmark/cli audit https://example.com
-
-# Or query the JSON scorecard endpoint directly
-curl -s "https://stealthmark.io/api/scan/audit?domain=example.com" | jq '{grade: .grade, score: .score, failed: [.checks[] | select(.status == "fail") | {id, title, severity, owaspGate}]}'
+# Opt-in only (requires user approval for external package execution / domain disclosure):
+npx @stealthmark/cli@0.1.6 audit https://example.com
 ```
 
-## Remediation Reference (Next.js / Edge)
+## Remediation Reference (Next.js Headers + Path Denial Middleware)
+
+`next.config.ts` `headers()` attaches response headers only—it does **not** block access to sensitive paths. Pair `next.config.ts` with edge `middleware.ts` (or upstream Nginx/Cloudflare rules) to deny access to hidden repository metadata and lockfiles:
 
 ```typescript
-// next.config.ts — baseline perimeter headers & .git/.env/lockfile blocking
+// 1) next.config.ts — baseline perimeter response headers & source map hardening
 import type { NextConfig } from "next";
 
 const securityHeaders = [
@@ -110,4 +123,22 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+```
+
+```typescript
+// 2) middleware.ts — explicitly deny requests to dotfiles, git metadata, and lockfiles
+import { NextResponse, type NextRequest } from "next/server";
+
+const BLOCKED_PATH_PREFIXES = ["/.git", "/package.json", "/package-lock.json", "/pnpm-lock.yaml", "/yarn.lock"];
+
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  if (
+    pathname.startsWith("/.") ||
+    BLOCKED_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
+  ) {
+    return new NextResponse(null, { status: 404 });
+  }
+  return NextResponse.next();
+}
 ```
