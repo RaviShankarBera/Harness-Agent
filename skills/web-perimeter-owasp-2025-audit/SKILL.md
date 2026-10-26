@@ -12,7 +12,7 @@ Conduct non-destructive, deterministic perimeter security audits against web app
 ## Important
 
 - Never send destructive payloads, brute-force traffic, or unisolated cache-poisoning probes against shared production cache keys.
-- Before sending any `X-Forwarded-Host` or `X-Forwarded-Scheme` probe against a live target, first verify that the CDN includes query parameters in its cache key (for example, confirming that two distinct query values produce separate `MISS` responses) or run the test against an isolated staging environment. If the CDN strips query strings (`Ignore Query String`), a random query parameter will not isolate the probe from normal visitors.
+- Before sending any `X-Forwarded-Host` or `X-Forwarded-Scheme` probe against a live target, first prove query-key isolation: send a clean request with query `A` (`?__cb=a1`), repeat the identical request with query `A` until it produces a confirmed cache `HIT`, and then verify that a clean request with a distinct query `B` (`?__cb=b2`) produces a cache `MISS` (proving the cache is active and keys on query parameters). If this cannot be confirmed, run the probe only against an isolated staging environment.
 - Verify real HTTP responses rather than relying on framework defaults; reverse proxies and CDNs frequently strip or override upstream headers.
 - Treat `403 Forbidden` on directory roots (such as `/.git/`) as insufficient unless direct object paths (`/.git/HEAD`, `/.git/config`) also return `404`/`403`.
 - Keep all checks local by default (`curl` / standard system tools). Only invoke external CLIs or remote scorecard APIs when the user explicitly opts in and approves sharing the target hostname.
@@ -32,14 +32,14 @@ Conduct non-destructive, deterministic perimeter security audits against web app
    - Disabling directory indexing on `/.git/` (`403 Forbidden`) does **not** prevent repository reconstruction if direct object paths remain readable.
    - Probe each path using a bounded, file-specific signature without printing sensitive contents:
      - `/.git/HEAD`: check if status is `200` and the first line matches `^ref: refs/` or a 40-character hex SHA (`^[0-9a-f]{40}$`).
-     - `/.git/config`: check if status is `200` and the body contains `[core]` or `[remote `.
+     - `/.git/config`: check if status is `200` and the body contains `[core]` or a `[remote "` section header.
      - `/docker-compose.yml`: check if status is `200` and the body contains a top-level `services:` block.
      - Environment configuration paths (such as `/<dotenv-artifact>`): check if status is `200` and lines match `^[A-Z][A-Z0-9_]+=` without `<!DOCTYPE` or `<html`, reporting only a boolean detection signal and never echoing secret values.
 2. **CORS Arbitrary Origin Reflection:**
    - Send `Origin: https://evil-probe.invalid`.
    - If the response reflects `Access-Control-Allow-Origin: https://evil-probe.invalid` together with `Access-Control-Allow-Credentials: true`, record it as a **HIGH-priority lead**. Verify whether the endpoint serves authenticated or non-public user data in a browser context before escalating to **CRITICAL** (public endpoints that return identical unauthenticated content regardless of cookies are a lower-severity misconfiguration).
 3. **Unkeyed Header Web Cache Poisoning (DoS / Defacement Vector):**
-   - Only after confirming that the target cache keys on query strings (or on an isolated staging host), send a `GET` request with a unique cache-buster and capture both headers and body:
+   - Only after proving query-key isolation (repeated request for query `A` returns `HIT` while distinct query `B` returns `MISS`) or on an isolated staging host, send a `GET` request with a fresh cache-buster and capture both headers and body:
      ```bash
      CB=$(openssl rand -hex 8)
      URL="https://example.com/?__cb=${CB}"
@@ -57,6 +57,7 @@ Conduct non-destructive, deterministic perimeter security audits against web app
 
 1. **Public Lockfile & Registry Config Exposure:**
    - Verify that `/package.json`, `/package-lock.json`, `/pnpm-lock.yaml`, and `/yarn.lock` return `404` or `403` in production so attackers cannot harvest your exact dependency tree (SBOM).
+   - Probe package-manager registry configuration paths (`/.npmrc`, `/.yarnrc`, `/.yarnrc.yml`) using bounded, non-exfiltrating signatures (for example, checking whether status is `200` and lines match `^(registry|@[a-z0-9_-]+:registry|npmScopes:|nodeLinker:)` without `<!DOCTYPE` or `<html`), reporting only the HTTP status and boolean match without printing file contents or tokens.
 2. **Production Source Maps & Subresource Integrity (SRI):**
    - Check whether production JavaScript bundles expose `.js.map` files containing original TypeScript/business logic.
    - Require `integrity="sha384-..."` and `crossorigin="anonymous"` on third-party `<script>` tags loaded from external CDNs.
@@ -99,7 +100,7 @@ npx @stealthmark/cli@0.1.6 audit https://example.com
 
 ## Remediation Reference (Next.js Headers + Path Denial Middleware)
 
-`next.config.ts` `headers()` attaches response headers only—it does **not** block access to sensitive paths. Pair `next.config.ts` with edge `middleware.ts` (or upstream Nginx/Cloudflare rules) to deny access to hidden repository metadata and lockfiles:
+`next.config.ts` `headers()` attaches response headers only—it does **not** block access to sensitive paths. Pair `next.config.ts` with edge `middleware.ts` (or upstream Nginx/Cloudflare rules) to deny access to hidden repository metadata and lockfiles while preserving intentional public discovery endpoints:
 
 ```typescript
 // 1) next.config.ts — baseline perimeter response headers & source map hardening
@@ -126,15 +127,29 @@ export default nextConfig;
 ```
 
 ```typescript
-// 2) middleware.ts — explicitly deny requests to dotfiles, git metadata, and lockfiles
+// 2) middleware.ts — deny dotfiles, git metadata, and lockfiles while preserving public /.well-known endpoints
 import { NextResponse, type NextRequest } from "next/server";
 
-const BLOCKED_PATH_PREFIXES = ["/.git", "/package.json", "/package-lock.json", "/pnpm-lock.yaml", "/yarn.lock"];
+const PUBLIC_WELL_KNOWN_PATHS = new Set([
+  "/.well-known/security.txt",
+  "/.well-known/agent.json",
+]);
+
+const BLOCKED_PATH_PREFIXES = [
+  "/.git",
+  "/.npmrc",
+  "/.yarnrc",
+  "/.yarnrc.yml",
+  "/package.json",
+  "/package-lock.json",
+  "/pnpm-lock.yaml",
+  "/yarn.lock",
+];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (
-    pathname.startsWith("/.") ||
+    (pathname.startsWith("/.") && !PUBLIC_WELL_KNOWN_PATHS.has(pathname)) ||
     BLOCKED_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
   ) {
     return new NextResponse(null, { status: 404 });
