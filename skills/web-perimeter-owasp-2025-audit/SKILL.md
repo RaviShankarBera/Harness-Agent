@@ -12,7 +12,7 @@ Conduct non-destructive, deterministic perimeter security audits against web app
 ## Important
 
 - Never send destructive payloads, brute-force traffic, or unisolated cache-poisoning probes against shared production cache keys.
-- Before sending any `X-Forwarded-Host` or `X-Forwarded-Scheme` probe against a live target, first prove query-key isolation: send a clean request with query `A` (`?__cb=a1`), repeat the identical request with query `A` until it produces a confirmed cache `HIT`, and then verify that a clean request with a distinct query `B` (`?__cb=b2`) produces a cache `MISS` (proving the cache is active and keys on query parameters). If this cannot be confirmed, run the probe only against an isolated staging environment.
+- Before sending any `X-Forwarded-Host` or `X-Forwarded-Scheme` probe against a live target, first prove query-key isolation using fresh random per-run values (`CB_A=$(openssl rand -hex 8)` and `CB_B=$(openssl rand -hex 8)`): send a clean request with `?__cb=${CB_A}` (`--max-time 5`), repeat the identical `?__cb=${CB_A}` request at most twice (max 3 requests total, `--max-time 5` each) to confirm a cache `HIT`, and then send a single clean request with `?__cb=${CB_B}` (`--max-time 5`) and verify it produces a cache `MISS`. If `HIT` followed by `MISS` is not confirmed within those bounded attempts, abort the live probe and run it only against an isolated staging environment.
 - Verify real HTTP responses rather than relying on framework defaults; reverse proxies and CDNs frequently strip or override upstream headers.
 - Treat `403 Forbidden` on directory roots (such as `/.git/`) as insufficient unless direct object paths (`/.git/HEAD`, `/.git/config`) also return `404`/`403`.
 - Keep all checks local by default (`curl` / standard system tools). Only invoke external CLIs or remote scorecard APIs when the user explicitly opts in and approves sharing the target hostname.
@@ -57,7 +57,7 @@ Conduct non-destructive, deterministic perimeter security audits against web app
 
 1. **Public Lockfile & Registry Config Exposure:**
    - Verify that `/package.json`, `/package-lock.json`, `/pnpm-lock.yaml`, and `/yarn.lock` return `404` or `403` in production so attackers cannot harvest your exact dependency tree (SBOM).
-   - Probe package-manager registry configuration paths (`/.npmrc`, `/.yarnrc`, `/.yarnrc.yml`) using bounded, non-exfiltrating signatures (for example, checking whether status is `200` and lines match `^(registry|@[a-z0-9_-]+:registry|npmScopes:|nodeLinker:)` without `<!DOCTYPE` or `<html`), reporting only the HTTP status and boolean match without printing file contents or tokens.
+   - Probe package-manager registry configuration paths (`/.yarnrc.yml` and package-manager registry config files) using bounded, non-exfiltrating signatures (for example, checking whether status is `200` and lines match `^(registry|@[a-z0-9_-]+:registry|npmScopes:|nodeLinker:)` without `<!DOCTYPE` or `<html`), reporting only the HTTP status and boolean match without printing file contents or tokens.
 2. **Production Source Maps & Subresource Integrity (SRI):**
    - Check whether production JavaScript bundles expose `.js.map` files containing original TypeScript/business logic.
    - Require `integrity="sha384-..."` and `crossorigin="anonymous"` on third-party `<script>` tags loaded from external CDNs.
@@ -137,8 +137,6 @@ const PUBLIC_WELL_KNOWN_PATHS = new Set([
 
 const BLOCKED_PATH_PREFIXES = [
   "/.git",
-  "/.npmrc",
-  "/.yarnrc",
   "/.yarnrc.yml",
   "/package.json",
   "/package-lock.json",
