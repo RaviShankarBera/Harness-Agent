@@ -53,7 +53,7 @@ for (const target of ['claude', 'claude-project', 'cursor', 'antigravity', 'code
     });
     for (const owner of OWNERS) {
       assert.ok(plan.operations.some(operation => operation.kind === 'copy-file'
-        && operation.sourceRelativePath.endsWith(`skills/${owner}/SKILL.md`)),
+        && operation.sourceRelativePath.replace(/\\/g, '/').endsWith(`skills/${owner}/SKILL.md`)),
       `missing ${owner} copy on ${target}`);
     }
   });
