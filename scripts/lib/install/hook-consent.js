@@ -216,6 +216,7 @@ function isHookRuntimeOperation(operation = {}) {
     || source.startsWith('.cursor/hooks/')
     || source === '.cursor/hooks.json'
     || destination.endsWith('/hooks/hooks.json')
+    || destination.endsWith('/hooks.json')
     || destination.endsWith('/.cursor/hooks.json')
     || destination.includes('/.cursor/hooks/')
   );
@@ -306,6 +307,11 @@ function disableUnselectedOpenCodeHooks(plan) {
 function shouldDisableOpenCodeHooks(plan = {}) {
   return plan.target === 'opencode'
     && (plan.hookConsent === 'declined' || !planSelectsHookRuntime(plan));
+}
+
+function shouldDisableAntigravityHooks(plan = {}) {
+  return ['antigravity', 'antigravity-home'].includes(plan.target)
+    && plan.hookConsent === 'declined';
 }
 
 function setStatePreviewHookConsent(statePreview, hookConsent) {
@@ -433,5 +439,6 @@ module.exports = {
   planMaterializesHookRuntime,
   resolveHookConsentFlags,
   shouldDisableOpenCodeHooks,
+  shouldDisableAntigravityHooks,
   withHookConsent,
 };
