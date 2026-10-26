@@ -36,6 +36,32 @@ def configure_git(project: Path) -> None:
     subprocess.run(["git", "config", "user.name", "Test"], cwd=project, check=True)
 
 
+@pytest.mark.parametrize(
+    ("scope", "expected_code", "status", "summary"),
+    [
+        ("spine", 0, "  OK:", "OK: Deterministic audit passed"),
+        ("artifacts", 1, "  FAIL:", "FAIL: Deterministic audit failed"),
+    ],
+)
+def test_audit_status_supports_legacy_output_encoding(
+    project: Path, monkeypatch: pytest.MonkeyPatch,
+    scope: str, expected_code: int, status: str, summary: str,
+) -> None:
+    (project / "PROJECT_LOG.md").write_text(
+        "# LOG\n\n## [2026-01-01] init | one\n", encoding="utf-8"
+    )
+    if scope == "artifacts":
+        (project / "guide.md").write_text("[missing](missing.md)\n", encoding="utf-8")
+    monkeypatch.setenv("PYTHONIOENCODING", "cp1252")
+
+    result = run_audit(project, scope, timeout=10)
+
+    assert result.returncode == expected_code, result.stdout + result.stderr
+    assert status in result.stdout
+    assert summary in result.stdout
+    assert "Traceback" not in result.stderr
+
+
 def test_artifact_scope_fails_on_broken_markdown_link(project: Path) -> None:
     (project / "guide.md").write_text("[missing](docs/missing.md)\n", encoding="utf-8")
     result = run_audit(project, "artifacts")

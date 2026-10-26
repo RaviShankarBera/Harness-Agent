@@ -54,14 +54,14 @@ class Report:
         print(f"\n[{title}]")
 
     def ok(self, message: str) -> None:
-        print(f"  ✓ {message}")
+        print(f"  OK: {message}")
 
     def warn(self, message: str) -> None:
         print(f"  WARN: {message}")
 
     def fail(self, message: str) -> None:
         self.failures += 1
-        print(f"  ✗ {message}")
+        print(f"  FAIL: {message}")
 
 
 def diagnostic(value: object) -> str:
@@ -741,11 +741,11 @@ def main() -> int:
     print()
     if report.failures:
         print(
-            f"✗ Deterministic audit failed with {report.failures} issue(s). Fix integrity errors before semantic review."
+            f"FAIL: Deterministic audit failed with {report.failures} issue(s). Fix integrity errors before semantic review."
         )
         return 1
     print(
-        "✓ Deterministic audit passed. Review warnings manually, then continue to semantic audit."
+        "OK: Deterministic audit passed. Review warnings manually, then continue to semantic audit."
     )
     return 0
 
