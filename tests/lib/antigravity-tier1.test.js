@@ -242,6 +242,25 @@ function runTests() {
       const { applyInstallPlan } = require('../../scripts/lib/install/apply');
       const plan = createManifestInstallPlan({ sourceRoot, moduleIds: ['platform-configs'], target: 'antigravity', projectRoot });
       applyInstallPlan(plan);
+
+      const state = JSON.parse(fs.readFileSync(plan.installStatePath, 'utf8'));
+      const dependencySources = state.operations
+        .map(operation => operation.sourceRelativePath || '')
+        .filter(source => source.split(/[/\\]+/)[0] === 'node_modules');
+      assert.ok(dependencySources.length > 0);
+      assert.ok(state.operations.every(operation => !String(operation.sourceRelativePath || '').split(/[/\\]+/).includes('..')));
+
+      const { buildDoctorReport, repairInstalledStates } = require('../../scripts/lib/install-lifecycle');
+      const lifecycleOptions = { repoRoot: sourceRoot, homeDir: path.join(root, 'home'), projectRoot, targets: ['antigravity'] };
+      const doctor = buildDoctorReport(lifecycleOptions).results[0];
+      assert.ok(!doctor.issues.some(issue => issue.code === 'unsafe-repair-source'), JSON.stringify(doctor.issues));
+      const installedAjv = path.join(plan.targetRoot, 'node_modules', 'ajv', 'package.json');
+      const originalAjv = fs.readFileSync(installedAjv, 'utf8');
+      fs.unlinkSync(installedAjv);
+      const repaired = repairInstalledStates(lifecycleOptions).results[0];
+      assert.strictEqual(repaired.status, 'repaired', repaired.error);
+      assert.strictEqual(fs.readFileSync(installedAjv, 'utf8'), originalAjv);
+
       fs.rmSync(path.join(root, 'node_modules'), { recursive: true });
       const run = spawnSync(process.execPath, [path.join(plan.targetRoot, 'scripts/memory-mcp.mjs')], {
         cwd: root,

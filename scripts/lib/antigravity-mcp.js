@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { createManagedScaffoldOperation } = require('./install-targets/helpers');
+const { formatPackageSourcePath } = require('./install/package-source');
 
 /**
  * Antigravity MCP Configuration Generator
@@ -42,7 +43,7 @@ function planAntigravityMemoryRuntime(moduleId, repoRoot, targetRoot) {
   const operations = sourcePaths.map(sourcePath => createManagedScaffoldOperation(
     moduleId, sourcePath, path.join(targetRoot, sourcePath), 'preserve-relative-path'
   ));
-  function addDependency(name, fromRoot, destinationRoot, ancestors = []) {
+  function addDependency(name, fromRoot, destinationRoot, ancestors = [], packageChain = []) {
     let manifestPath;
     try {
       manifestPath = require.resolve(`${name}/package.json`, { paths: [fromRoot] });
@@ -52,12 +53,13 @@ function planAntigravityMemoryRuntime(moduleId, repoRoot, targetRoot) {
     if (ancestors.includes(manifestPath)) return;
     const packageRoot = path.dirname(manifestPath);
     const destinationPath = path.join(destinationRoot, 'node_modules', name);
+    const sourceChain = [...packageChain, name];
     operations.push(createManagedScaffoldOperation(
-      moduleId, path.relative(repoRoot, packageRoot), destinationPath, 'preserve-relative-path'
+      moduleId, formatPackageSourcePath(sourceChain), destinationPath, 'preserve-relative-path'
     ));
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
     for (const dependency of Object.keys(manifest.dependencies || {})) {
-      addDependency(dependency, packageRoot, destinationPath, [...ancestors, manifestPath]);
+      addDependency(dependency, packageRoot, destinationPath, [...ancestors, manifestPath], sourceChain);
     }
   }
   addDependency('ajv', repoRoot, targetRoot);

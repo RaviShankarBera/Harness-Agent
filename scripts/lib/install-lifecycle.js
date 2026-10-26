@@ -8,6 +8,7 @@ const { isDeepStrictEqual } = require('util');
 const { loadInstallManifests } = require('./install-manifests');
 const { readInstallState, validateInstallState } = require('./install-state');
 const { assertWithinTrustedRoot, isWithinRoot } = require('./path-safety');
+const { isPackageSourcePath, resolvePackageSourcePath } = require('./install/package-source');
 const { createInstallPlanFromRequest } = require('./install/runtime');
 const { assertNoNewUserOwnedFile, prepareUserOwnedFileGuard } = require('./install/ownership-guard');
 const { withOpenCodeInstallLocks } = require('./install/opencode-install-lock');
@@ -192,6 +193,17 @@ function resolveOperationSourcePath(repoRoot, operation) {
       || path.win32.isAbsolute(sourceRelativePath);
     if (isAbsolute || hasParentTraversal) {
       throw createUnsafeRepairSourceError();
+    }
+
+    if (isPackageSourcePath(sourceRelativePath)) {
+      let packageSourcePath;
+      try {
+        packageSourcePath = resolvePackageSourcePath(repoRoot, sourceRelativePath);
+      } catch {
+        throw createUnsafeRepairSourceError();
+      }
+      // An unresolvable package reports as a missing source, not an unsafe one.
+      return packageSourcePath || path.resolve(repoRoot, sourceRelativePath);
     }
 
     return assertSafeRepairSourcePath(

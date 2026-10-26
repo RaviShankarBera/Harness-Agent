@@ -9,6 +9,7 @@ const { getInstallTargetAdapter } = require('../install-targets/registry');
 const { resolveInvocationEnvironment } = require('../invocation-environment');
 const { disableUnselectedOpenCodeHooks } = require('./hook-consent');
 const { readHooksConfig } = require('../hooks-config');
+const { isPackageSourcePath, resolvePackageSourcePath } = require('./package-source');
 const {
   materializeManagedHooks,
 } = require('./claude-settings');
@@ -181,8 +182,10 @@ function materializeScaffoldOperation(sourceRoot, operation) {
     ];
   }
 
-  const sourcePath = path.join(sourceRoot, operation.sourceRelativePath);
-  if (!fs.existsSync(sourcePath)) {
+  const sourcePath = isPackageSourcePath(operation.sourceRelativePath)
+    ? resolvePackageSourcePath(sourceRoot, operation.sourceRelativePath)
+    : path.join(sourceRoot, operation.sourceRelativePath);
+  if (!sourcePath || !fs.existsSync(sourcePath)) {
     return [];
   }
 
