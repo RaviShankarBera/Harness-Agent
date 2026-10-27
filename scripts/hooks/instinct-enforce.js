@@ -279,8 +279,11 @@ async function runCheck(filePath) {
   if (warnings.length > 0) {
     process.stderr.write(`${joinStderr(warnings)}\n`);
   }
-  const { verdict } = evaluateMatches(matches, toolInput);
-  process.stdout.write(formatCheckOutput(matches.slice(0, MATCH_DISPLAY_LIMIT), verdict));
+  const { verdict, best } = evaluateMatches(matches, toolInput);
+  // The instinct that decided the verdict leads the list, so a block caused by
+  // a prohibition ranked below the display cap still names its cause.
+  const shown = best ? [best, ...matches.filter(match => match !== best)] : matches;
+  process.stdout.write(formatCheckOutput(shown.slice(0, MATCH_DISPLAY_LIMIT), verdict));
 }
 
 async function main() {

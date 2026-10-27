@@ -391,6 +391,43 @@ async function runTests() {
     }
   })) passed++; else failed++;
 
+  if (await test('--check names the prohibition that blocks even below the display cap', async () => {
+    const homunculusDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ecc-instinct-check-'));
+    const payloadPath = path.join(homunculusDir, 'payload.json');
+    try {
+      for (const n of [1, 2, 3]) {
+        writeInstinct(path.join(homunculusDir, 'instincts', 'personal', `widget-guide-${n}.yaml`), {
+          id: `widget-guide-${n}`,
+          confidence: 0.95,
+          trigger: 'when editing `fooWidget.js`',
+          content: 'Keep widgets small.',
+        });
+      }
+      writeInstinct(path.join(homunculusDir, 'instincts', 'personal', 'no-foo-prefix.yaml'), {
+        id: 'no-foo-prefix',
+        confidence: 0.91,
+        trigger: 'when naming new modules',
+        content: 'NEVER foo prefix on new modules',
+      });
+      fs.writeFileSync(payloadPath, JSON.stringify({
+        tool_name: 'Write',
+        tool_input: { file_path: '/src/fooWidget.js', contents: 'fooWidget' },
+      }));
+      const result = spawnSync(process.execPath, [hookScript, '--check', payloadPath], {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          CLV2_HOMUNCULUS_DIR: homunculusDir,
+        },
+      });
+      assert.strictEqual(result.status, 0, result.stderr);
+      assert.ok(result.stdout.includes('verdict: block'), result.stdout);
+      assert.ok(result.stdout.includes('- no-foo-prefix '), result.stdout);
+    } finally {
+      fs.rmSync(homunculusDir, { recursive: true, force: true });
+    }
+  })) passed++; else failed++;
+
   if (await test('--check fails a payload with no tool_name instead of reporting a clean pass', async () => {
     const homunculusDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ecc-instinct-check-'));
     const payloadPath = path.join(homunculusDir, 'payload.json');
