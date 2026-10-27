@@ -297,12 +297,17 @@ function instinctMatchKind(instinct, toolInput) {
     .flatMap(clause => extractQuotedIdentifiers(clause))
     .map(identifier => identifier.toLowerCase()));
   const quotedSource = `${instinct.trigger || ''}\n${instinct.content || ''}`;
+  // Every quoted hit is checked before settling on guidance, so a matching
+  // file name in the trigger cannot hide a forbidden name in the content.
+  let quotedGuidance = false;
   for (const identifier of extractQuotedIdentifiers(quotedSource)) {
     const key = identifier.toLowerCase();
     if (quotedHaystack.toLowerCase().includes(key)) {
-      return prohibited.has(key) ? 'prohibition' : 'guidance';
+      if (prohibited.has(key)) return 'prohibition';
+      quotedGuidance = true;
     }
   }
+  if (quotedGuidance) return 'guidance';
 
   const domain = String(instinct.domain || '').trim();
   if (domain) {

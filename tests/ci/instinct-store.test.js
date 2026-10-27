@@ -260,6 +260,24 @@ function runTests() {
     }), 'prohibition');
   })) passed++; else failed++;
 
+  if (test('instinctMatchKind does not let a quoted file in the trigger hide a forbidden name', () => {
+    const { instinctMatchKind } = loadStore();
+    const instinct = {
+      id: 'no-foowidget-in-helpers',
+      confidence: 0.91,
+      trigger: 'when editing `helpers.js`',
+      content: 'NEVER invoke `fooWidget`',
+    };
+    assert.strictEqual(instinctMatchKind(instinct, {
+      file_path: '/src/helpers.js',
+      contents: 'fooWidget()',
+    }), 'prohibition');
+    assert.strictEqual(instinctMatchKind(instinct, {
+      file_path: '/src/helpers.js',
+      contents: 'barWidget()',
+    }), 'guidance');
+  })) passed++; else failed++;
+
   if (test('getInstinctConfidenceThreshold rejects hex and exponent overrides', () => {
     withEnv({ ECC_INSTINCT_CONFIDENCE_THRESHOLD: undefined }, () => {
       const { getInstinctConfidenceThreshold, DEFAULT_INSTINCT_CONFIDENCE_THRESHOLD } = loadStore();
