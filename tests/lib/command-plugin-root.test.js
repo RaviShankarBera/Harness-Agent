@@ -55,7 +55,7 @@ test('instinct-enforce command uses shared inline resolver (#2037)', () => {
   assert.strictEqual((instinctEnforceDoc.match(/var r=\(function/g) || []).length, 1);
   assert.strictEqual((instinctEnforceDoc.match(/scripts','lib','resolve-ecc-root/g) || []).length, 1);
   assert.ok(
-    instinctEnforceDoc.includes('scripts/hooks/instinct-enforce.js'),
+    /scripts\/hooks\/instinct-enforce\.js" --check /.test(instinctEnforceDoc),
     'instinct-enforce should invoke the PreToolUse hook in --check mode'
   );
 });
