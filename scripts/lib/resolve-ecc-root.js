@@ -183,7 +183,7 @@ function getInlineWslConversion() {
     try {
       _inlineWslConversion = require('./install-targets/helpers').INLINE_WSL_CONVERSION;
     } catch (_) {
-      _inlineWslConversion = `try{if(o.platform()==='linux'){var v=f.readFileSync('/proc/version','utf8').toLowerCase();if(v.includes('microsoft')){var m=d.match(/^([A-Za-z]):[\\\\\\\\/]/);if(m){var dl=m[1].toLowerCase();d='/mnt/'+dl+d.slice(2).replace(/\\\\\\\\/g,'/')}}}}catch(_){}`;
+      _inlineWslConversion = `try{if(o.platform()==='linux'){var v=f.readFileSync('/proc/version','utf8').toLowerCase();if(v.includes('microsoft')&&d.match(/^[A-Za-z]:/)&&(d.charAt(2)==='/'||d.charCodeAt(2)===92)){d='/mnt/'+d.charAt(0).toLowerCase()+d.slice(2).split(String.fromCharCode(92)).join('/')}}}catch(_){}`;
     }
   }
   return _inlineWslConversion;
