@@ -210,7 +210,7 @@ mkdir -p "${XDG_DATA_HOME:-$HOME/.local/share}/ecc-homunculus"/{instincts/{perso
 | Command | Description |
 |---------|-------------|
 | `/instinct-status` | Show all instincts (project-scoped + global) with confidence |
-| `/instinct-enforce` | Dry-run Write/Edit/Bash payloads against high-confidence instincts |
+| `/instinct-enforce` | Dry-run Write/Edit/MultiEdit/Bash payloads against high-confidence instincts |
 | `/evolve` | Cluster related instincts into skills/commands, suggest promotions |
 | `/instinct-export` | Export instincts (filterable by scope/domain) |
 | `/instinct-import <file>` | Import instincts with scope control |

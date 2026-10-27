@@ -1,6 +1,6 @@
 ---
 name: instinct-enforce
-description: Dry-run instinct-enforce against a sample Write/Edit/Bash payload and print matching instincts
+description: Dry-run instinct-enforce against a sample Write/Edit/MultiEdit/Bash payload and print matching instincts
 command: true
 ---
 
