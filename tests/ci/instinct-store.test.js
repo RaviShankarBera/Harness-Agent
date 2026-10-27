@@ -217,6 +217,31 @@ function runTests() {
     assert.strictEqual(hits[0].id, 'no-hardcoded-secrets');
   })) passed++; else failed++;
 
+  if (test('instinctMatchKind classifies a quoted name by the clause it sits in', () => {
+    const { instinctMatchKind } = loadStore();
+    const unrelated = {
+      id: 'readme-no-prod-delete',
+      confidence: 0.9,
+      trigger: 'when editing `README.md`',
+      content: 'NEVER delete production data.',
+    };
+    assert.strictEqual(instinctMatchKind(unrelated, {
+      file_path: '/repo/README.md',
+      new_string: 'Fix a typo.',
+    }), 'guidance');
+
+    const forbidden = {
+      id: 'no-prod-config',
+      confidence: 0.9,
+      trigger: 'when changing config',
+      content: 'Keep configs small. NEVER edit `config.prod.json` by hand.',
+    };
+    assert.strictEqual(instinctMatchKind(forbidden, {
+      file_path: '/repo/config.prod.json',
+      contents: '{}',
+    }), 'prohibition');
+  })) passed++; else failed++;
+
   if (test('getInstinctConfidenceThreshold rejects hex and exponent overrides', () => {
     withEnv({ ECC_INSTINCT_CONFIDENCE_THRESHOLD: undefined }, () => {
       const { getInstinctConfidenceThreshold, DEFAULT_INSTINCT_CONFIDENCE_THRESHOLD } = loadStore();

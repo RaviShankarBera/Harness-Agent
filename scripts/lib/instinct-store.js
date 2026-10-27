@@ -17,6 +17,7 @@ const DEFAULT_MATCH_LIMIT = 3;
 const QUOTED_IDENTIFIER_MIN_LENGTH = 4;
 const MATCH_STOPWORDS = new Set(['when', 'always', 'never', 'the', 'and']);
 const QUOTED_IDENTIFIER_RE = /(["'`])([^"'`]+)\1/g;
+const PROHIBITION_MARKER_RE = /\b(?:never|do not|don't|dont)\b/i;
 const NEVER_TOKEN_RE = /\b(?:never|do not|don't|dont)\s+([A-Za-z0-9_-]+(?:\s+[A-Za-z0-9_-]+){0,2})/gi;
 // Generic words after "never" ("NEVER use hardcoded secrets") say nothing
 // about what is forbidden, and as substrings they hit `user` or `useState`.
@@ -239,6 +240,12 @@ function extractQuotedIdentifiers(text) {
   return identifiers;
 }
 
+function extractProhibitedClauses(text) {
+  return String(text || '')
+    .split(/[.;!?](?=\s|$)|\n/)
+    .filter(clause => PROHIBITION_MARKER_RE.test(clause));
+}
+
 function extractNeverTokens(text) {
   const tokens = [];
   const source = String(text || '');
@@ -281,10 +288,17 @@ function instinctMatchKind(instinct, toolInput) {
     }
   }
 
+  // A quoted name is a prohibition only when it sits in the clause that
+  // forbids something; a quoted file in the trigger stays guidance even when
+  // the content forbids something unrelated.
+  const prohibited = new Set(extractProhibitedClauses(instinct.content)
+    .flatMap(clause => extractQuotedIdentifiers(clause))
+    .map(identifier => identifier.toLowerCase()));
   const quotedSource = `${instinct.trigger || ''}\n${instinct.content || ''}`;
   for (const identifier of extractQuotedIdentifiers(quotedSource)) {
-    if (quotedHaystack.toLowerCase().includes(identifier.toLowerCase())) {
-      return neverTokens.length > 0 ? 'prohibition' : 'guidance';
+    const key = identifier.toLowerCase();
+    if (quotedHaystack.toLowerCase().includes(key)) {
+      return prohibited.has(key) ? 'prohibition' : 'guidance';
     }
   }
 
