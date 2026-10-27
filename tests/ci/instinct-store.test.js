@@ -242,6 +242,24 @@ function runTests() {
     }), 'prohibition');
   })) passed++; else failed++;
 
+  if (test('instinctMatchKind keeps every prohibition in a sentence', () => {
+    const { instinctMatchKind } = loadStore();
+    const twoRules = {
+      id: 'no-foo-no-bar',
+      confidence: 0.91,
+      trigger: 'when naming modules',
+      content: 'NEVER foo and NEVER bar',
+    };
+    assert.strictEqual(instinctMatchKind(twoRules, {
+      file_path: '/src/widget.js',
+      contents: 'bar',
+    }), 'prohibition');
+    assert.strictEqual(instinctMatchKind(twoRules, {
+      file_path: '/src/widget.js',
+      contents: 'foo',
+    }), 'prohibition');
+  })) passed++; else failed++;
+
   if (test('getInstinctConfidenceThreshold rejects hex and exponent overrides', () => {
     withEnv({ ECC_INSTINCT_CONFIDENCE_THRESHOLD: undefined }, () => {
       const { getInstinctConfidenceThreshold, DEFAULT_INSTINCT_CONFIDENCE_THRESHOLD } = loadStore();

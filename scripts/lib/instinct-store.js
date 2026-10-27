@@ -18,7 +18,9 @@ const QUOTED_IDENTIFIER_MIN_LENGTH = 4;
 const MATCH_STOPWORDS = new Set(['when', 'always', 'never', 'the', 'and']);
 const QUOTED_IDENTIFIER_RE = /(["'`])([^"'`]+)\1/g;
 const PROHIBITION_MARKER_RE = /\b(?:never|do not|don't|dont)\b/i;
-const NEVER_TOKEN_RE = /\b(?:never|do not|don't|dont)\s+([A-Za-z0-9_-]+(?:\s+[A-Za-z0-9_-]+){0,2})/gi;
+// The trailing words stop before another marker, so "NEVER foo and NEVER bar"
+// leaves "NEVER bar" for the next match instead of swallowing it.
+const NEVER_TOKEN_RE = /\b(?:never|do not|don't|dont)\s+([A-Za-z0-9_-]+(?:\s+(?!(?:never|do\s+not|don't|dont)\b)[A-Za-z0-9_-]+){0,2})/gi;
 // Generic words after "never" ("NEVER use hardcoded secrets") say nothing
 // about what is forbidden, and as substrings they hit `user` or `useState`.
 // The never token is the first word after them.
