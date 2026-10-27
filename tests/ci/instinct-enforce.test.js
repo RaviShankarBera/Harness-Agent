@@ -194,6 +194,34 @@ async function runTests() {
 
   await withHomunculus({
     id: 'no-foo-prefix',
+    confidence: 0.91,
+    content: 'NEVER foo prefix on new modules',
+  }, async (homunculusDir) => {
+    if (await test('a prohibition ranked below three guidance matches still blocks', async () => {
+      for (const id of ['style-a', 'style-b', 'style-c']) {
+        writeInstinct(path.join(homunculusDir, 'instincts', 'personal', `${id}.yaml`), {
+          id,
+          confidence: 0.95,
+          domain: 'code-style',
+          trigger: 'when editing style files',
+          content: 'Keep the house style.',
+        });
+      }
+      const hook = loadHook();
+      const result = await hook.run(JSON.stringify({
+        tool_name: 'Write',
+        tool_input: {
+          file_path: '/src/code-style/fooWidget.js',
+          contents: 'export function fooWidget() { return 1; }',
+        },
+      }));
+      assert.strictEqual(result.exitCode, 2);
+      assert.ok(String(result.stderr || '').includes('no-foo-prefix'));
+    })) passed++; else failed++;
+  });
+
+  await withHomunculus({
+    id: 'no-foo-prefix',
     confidence: 0.72,
     content: 'NEVER foo prefix on new modules',
   }, async () => {

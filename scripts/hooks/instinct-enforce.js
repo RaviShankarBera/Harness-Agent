@@ -94,6 +94,8 @@ function buildWarnMessage(instinct) {
   ].join('\n');
 }
 
+const MATCH_DISPLAY_LIMIT = 3;
+
 function evaluateMatches(matches, toolInput) {
   if (!Array.isArray(matches) || matches.length === 0) {
     return { verdict: 'none', best: null };
@@ -146,9 +148,11 @@ function loadMatchesForTool(toolInput) {
   }
 
   try {
+    // Every match is kept so a prohibition ranked below higher-confidence
+    // guidance still blocks; only the list shown to the user is capped.
     const matches = matchInstincts(loaded.merged, toolInput, {
       minConfidence: getInstinctConfidenceThreshold(),
-      limit: 3,
+      limit: Math.max(1, loaded.merged.length),
     });
     return { matches, warnings };
   } catch (error) {
@@ -276,7 +280,7 @@ async function runCheck(filePath) {
     process.stderr.write(`${joinStderr(warnings)}\n`);
   }
   const { verdict } = evaluateMatches(matches, toolInput);
-  process.stdout.write(formatCheckOutput(matches, verdict));
+  process.stdout.write(formatCheckOutput(matches.slice(0, MATCH_DISPLAY_LIMIT), verdict));
 }
 
 async function main() {
