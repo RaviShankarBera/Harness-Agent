@@ -17,7 +17,15 @@ const DEFAULT_MATCH_LIMIT = 3;
 const QUOTED_IDENTIFIER_MIN_LENGTH = 4;
 const MATCH_STOPWORDS = new Set(['when', 'always', 'never', 'the', 'and']);
 const QUOTED_IDENTIFIER_RE = /(["'`])([^"'`]+)\1/g;
-const NEVER_TOKEN_RE = /\b(?:never|do not|don't|dont)\s+([A-Za-z0-9_-]+)/gi;
+const NEVER_TOKEN_RE = /\b(?:never|do not|don't|dont)\s+([A-Za-z0-9_-]+(?:\s+[A-Za-z0-9_-]+){0,2})/gi;
+// Generic words after "never" ("NEVER use hardcoded secrets") say nothing
+// about what is forbidden, and as substrings they hit `user` or `useState`.
+// The never token is the first word after them.
+const NEVER_TOKEN_STOPWORDS = new Set([
+  ...MATCH_STOPWORDS,
+  'a', 'an', 'any', 'be', 'call', 'do', 'ever', 'get', 'have', 'include',
+  'let', 'make', 'put', 'set', 'use', 'write',
+]);
 
 /**
  * Resolve the minimum confidence an instinct needs to be injected at
@@ -237,7 +245,8 @@ function extractNeverTokens(text) {
   NEVER_TOKEN_RE.lastIndex = 0;
   let match;
   while ((match = NEVER_TOKEN_RE.exec(source)) !== null) {
-    const token = match[1];
+    const token = match[1].split(/\s+/)
+      .find((word) => !NEVER_TOKEN_STOPWORDS.has(word.toLowerCase()));
     if (token) tokens.push(token);
   }
   return tokens;

@@ -24,7 +24,7 @@ The hook is `scripts/hooks/instinct-enforce.js`, registered on `Write|Edit|Multi
 3. Match the tool payload (`file_path`, `command`, `contents` / `new_string`) with no model call:
    - `domain` token appears in the path or command (word boundary), or
    - a quoted identifier from `trigger` or `content` (length >= 4, excluding `when` / `always` / `never` / `the` / `and`) appears in contents, command, or basename, or
-   - `content` contains `NEVER <token>` / `do not <token>` / `don't <token>` and `<token>` appears in the payload
+   - `content` contains `NEVER <token>` / `do not <token>` / `don't <token>` and `<token>` appears in the payload; generic words such as `use`, `call` or `make` are skipped, so `NEVER use hardcoded secrets` matches on `hardcoded`
 4. Cap matches at 3. Best match decides the verdict.
 
 | Best-match confidence | Default | Override |

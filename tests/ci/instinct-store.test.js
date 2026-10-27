@@ -194,6 +194,29 @@ function runTests() {
     assert.deepStrictEqual(misses, []);
   })) passed++; else failed++;
 
+  if (test('matchInstincts skips generic verbs after NEVER', () => {
+    const { matchInstincts } = loadStore();
+    const instinct = {
+      id: 'no-hardcoded-secrets',
+      confidence: 0.9,
+      trigger: 'when writing config',
+      content: 'NEVER use hardcoded secrets',
+    };
+
+    const misses = matchInstincts([instinct], {
+      file_path: '/src/user.js',
+      new_string: 'const [user, setUser] = useState(null);',
+    });
+    assert.deepStrictEqual(misses, []);
+
+    const hits = matchInstincts([instinct], {
+      file_path: '/src/config.js',
+      new_string: 'const key = "hardcoded-api-key";',
+    });
+    assert.strictEqual(hits.length, 1);
+    assert.strictEqual(hits[0].id, 'no-hardcoded-secrets');
+  })) passed++; else failed++;
+
   if (test('getInstinctConfidenceThreshold rejects hex and exponent overrides', () => {
     withEnv({ ECC_INSTINCT_CONFIDENCE_THRESHOLD: undefined }, () => {
       const { getInstinctConfidenceThreshold, DEFAULT_INSTINCT_CONFIDENCE_THRESHOLD } = loadStore();
