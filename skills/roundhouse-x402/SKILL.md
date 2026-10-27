@@ -59,6 +59,8 @@ Do **not** use this skill as a substitute for spending-policy design — keep bu
 | MCP Registry name | `io.roundhouseai/roundhouse` |
 | Facilitator | `https://x402.roundhouseai.io` |
 | Facilitator `/supported` | `https://x402.roundhouseai.io/supported` |
+| Facilitator guide | `https://roundhouseai.io/docs/guides/use-the-roundhouse-facilitator` |
+| Helper CLI source | `https://github.com/roundhouseai-io/x402` |
 | Helper CLI package | `https://www.npmjs.com/package/@roundhouseai/x402` (`npm i -g @roundhouseai/x402@0.6.0`, binary `rh-x402`) |
 
 Anonymous without a key: `/v0/unified*`, `/v0/endpoints` (and related catalog docs). Most other `/v0` reads need `Authorization: Bearer rh_live_…`. A $0.01 x402 call to `GET /v0/test/x402` issues a short-lived trial key (identity / proof path, not a throughput tier).
@@ -67,12 +69,12 @@ Anonymous without a key: `/v0/unified*`, `/v0/endpoints` (and related catalog do
 
 MCP server source: `https://github.com/roundhouseai-io/roundhouse-mcp`
 
-Run this before either config. It exits non-zero unless `ROUNDHOUSE_API_KEY` is set and starts with the `rh_live_` prefix:
+Run this before either config. It exits non-zero unless `ROUNDHOUSE_API_KEY` is an `rh_live_` key with at least one character after the prefix (`rh_live_` alone is refused):
 
 ```bash
 # Refuse to configure without a real key in the environment
 case "${ROUNDHOUSE_API_KEY:-}" in
-  rh_live_*) echo "ROUNDHOUSE_API_KEY set" ;;
+  rh_live_?*) echo "ROUNDHOUSE_API_KEY set" ;;
   *) echo "ROUNDHOUSE_API_KEY missing or not an rh_live_ key; refusing to configure" >&2; exit 1 ;;
 esac
 ```
@@ -91,21 +93,27 @@ esac
 
 Keep the key in an env var — never commit a literal key. Claude Code expands `${VAR}` in `.mcp.json` `command`, `args`, `env`, `url`, and `headers`, so the config above works in a project `.mcp.json` when `ROUNDHOUSE_API_KEY` is set. An unset `${ROUNDHOUSE_API_KEY}` with no default does not stop the file from loading: Claude Code warns and leaves the `${ROUNDHOUSE_API_KEY}` text in place (covered credential names in remote `headers` are read as empty instead). Do not add a `${VAR:-default}`. The check above is what refuses a missing or malformed key, so a placeholder is never sent. Prefer this file over passing the header on the `claude mcp add` command line.
 
-Clients that do not expand env vars in config (for example Claude Desktop) should use that client's own secret or input mechanism, or be launched from a shell where `ROUNDHOUSE_API_KEY` is exported. For a stdio bridge, [`mcp-remote`](https://github.com/geelen/mcp-remote) substitutes `${VAR}` in `--header` from the process environment, and its README says to keep spaces out of `args` (Cursor, Codex CLI, and Claude Desktop on Windows split them). Claude Code expands the `env` value before launch:
+Clients that do not expand env vars in config (for example Claude Desktop) must not put `Bearer ${ROUNDHOUSE_API_KEY}` in an `env` block: that block overrides the inherited environment with the literal text, so the bridge never sees the key. Use the client's own secret or input mechanism, or export the full header value in the shell that launches the client and omit `env` from the file:
+
+```bash
+# Expanded by the shell before launch. Do not write the value into the config.
+export ROUNDHOUSE_AUTHORIZATION="Bearer ${ROUNDHOUSE_API_KEY}"
+```
+
+For a stdio bridge, [`mcp-remote`](https://github.com/geelen/mcp-remote) `0.15.2` substitutes `${VAR}` in `--header` from the process environment. Pin that version: an unpinned `npx -y mcp-remote` runs whatever the registry serves, in the same process that receives the bearer token. Keep spaces out of `args` (Cursor, Codex CLI, and Claude Desktop on Windows split them):
 
 ```json
 {
   "mcpServers": {
     "roundhouse": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://api.roundhouseai.io/v0/mcp", "--header", "Authorization:${ROUNDHOUSE_AUTHORIZATION}"],
-      "env": { "ROUNDHOUSE_AUTHORIZATION": "Bearer ${ROUNDHOUSE_API_KEY}" }
+      "args": ["-y", "mcp-remote@0.15.2", "https://api.roundhouseai.io/v0/mcp", "--header", "Authorization:${ROUNDHOUSE_AUTHORIZATION}"]
     }
   }
 }
 ```
 
-That file holds only variable references, so it is safe to commit. If `ROUNDHOUSE_AUTHORIZATION` is unset, `mcp-remote` substitutes an empty string and would connect without a key — run the check first.
+That file holds only a variable reference, so it is safe to commit. `mcp-remote` 0.15.2 leaves an unset `${ROUNDHOUSE_AUTHORIZATION}` in the header and warns, which does not authenticate — run the check and the export first.
 
 Docs: `https://roundhouseai.io/docs/api/mcp`
 
@@ -128,7 +136,7 @@ Always pass `--max`. Prefer re-running the identical command on retry (auth cach
 curl -sS https://x402.roundhouseai.io/supported
 ```
 
-The upstream `@x402/*` middleware does not pick a facilitator from environment variables on its own — pass the URL to the facilitator client explicitly (same pattern as the upstream [`examples/typescript/servers`](https://github.com/x402-foundation/x402/tree/main/examples/typescript/servers)):
+The facilitator takes no API key. Seller setup is in [`use the Roundhouse facilitator`](https://roundhouseai.io/docs/guides/use-the-roundhouse-facilitator). The upstream `@x402/*` middleware does not read `X402_FACILITATOR_URL` on its own — pass the URL to the facilitator client explicitly (same pattern as the upstream [`examples/typescript/servers`](https://github.com/x402-foundation/x402/tree/main/examples/typescript/servers)):
 
 ```typescript
 import { paymentMiddleware, x402ResourceServer } from "@x402/express";
@@ -153,7 +161,7 @@ Endpoints (standard x402):
 | `POST` | `/settle` | Settle on-chain from facilitator wallet |
 | `GET` | `/test/x402` | Facilitator's own paywalled test resource |
 
-Live `/supported` (confirm before production; do not hardcode forever): `exact` on Base (`base` / `eip155:8453`). Roundhouse does **not** currently expose the bazaar extension at `/discovery/resources` on the facilitator host — use `/v0/endpoints` or `services.json` for catalog discovery instead.
+Live `/supported` (confirm before production; do not hardcode forever): `exact` on Base mainnet only. x402 v1 advertises network `base`; x402 v2 advertises `eip155:8453`. There is no Base Sepolia. The v2 fee payer is `0xFAC4024325d2960c0Fbb1c0F382296182C9620A7` — re-read `/supported` rather than keeping a retired signer. The snippet above registers the v2 network id. Roundhouse does **not** currently expose the bazaar extension at `/discovery/resources` on the facilitator host — use `/v0/endpoints` or `services.json` for catalog discovery instead.
 
 `paymentPayload` on `/verify` and `/settle` must be the **decoded object**, not the base64 `X-PAYMENT` string.
 
