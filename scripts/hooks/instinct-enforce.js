@@ -262,16 +262,16 @@ async function runCheck(filePath) {
     return;
   }
 
-  const toolName = normalizeToolName(rawToolName.trim());
-  if (!ENFORCE_TOOLS.has(toolName)) {
-    process.stdout.write(`verdict: none\nreason: ${toolName} not enforced\n`);
-    return;
-  }
-
   const toolInput = record.tool_input ?? record.toolInput;
   if (!toolInput || typeof toolInput !== 'object' || Array.isArray(toolInput)) {
     process.stdout.write('verdict: none\nreason: payload has no tool_input object\n');
     process.exitCode = 1;
+    return;
+  }
+
+  const toolName = normalizeToolName(rawToolName.trim());
+  if (!ENFORCE_TOOLS.has(toolName)) {
+    process.stdout.write(`verdict: none\nreason: ${toolName} not enforced\n`);
     return;
   }
 

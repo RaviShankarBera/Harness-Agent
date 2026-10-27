@@ -423,6 +423,13 @@ async function runTests() {
       const missingInput = runCheck();
       assert.strictEqual(missingInput.status, 1);
       assert.ok(missingInput.stdout.includes('reason: payload has no tool_input object'));
+
+      // An unenforced tool still needs a tool_input object: the gate must not
+      // turn a malformed payload into a clean pass.
+      fs.writeFileSync(payloadPath, JSON.stringify({ tool_name: 'Grep' }));
+      const unenforcedMissingInput = runCheck();
+      assert.strictEqual(unenforcedMissingInput.status, 1);
+      assert.ok(unenforcedMissingInput.stdout.includes('reason: payload has no tool_input object'));
     } finally {
       fs.rmSync(homunculusDir, { recursive: true, force: true });
     }
