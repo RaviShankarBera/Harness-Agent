@@ -295,9 +295,9 @@ async function main() {
 
   const chunks = [];
   for await (const chunk of process.stdin) {
-    chunks.push(chunk);
+    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
   }
-  const result = await run(chunks.join(''));
+  const result = await run(Buffer.concat(chunks).toString('utf8'));
   if (result.stderr) {
     process.stderr.write(result.stderr.endsWith('\n') ? result.stderr : `${result.stderr}\n`);
   }
