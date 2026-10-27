@@ -199,8 +199,8 @@ function collectToolStrings(toolInput) {
   push(input.content);
   push(input.new_string);
   push(input.newString);
-  push(input.old_string);
-  push(input.oldString);
+  // Text an edit removes is not matched: an edit that corrects a violation
+  // must not be blocked by the very text it takes out.
 
   if (Array.isArray(input.edits)) {
     for (const edit of input.edits) {

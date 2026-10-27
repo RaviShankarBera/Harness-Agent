@@ -255,6 +255,22 @@ async function runTests() {
   });
 
   await withHomunculus({
+    id: 'no-foo-prefix',
+    confidence: 0.91,
+    content: 'NEVER foo prefix on new modules',
+  }, async () => {
+    if (await test('an Edit that removes a forbidden name is not blocked', async () => {
+      const hook = loadHook();
+      const result = await hook.run(JSON.stringify({
+        tool_name: 'Edit',
+        tool_input: { file_path: '/src/widget.js', old_string: 'fooWidget', new_string: 'widget' },
+      }));
+      assert.strictEqual(result.exitCode, 0);
+      assert.strictEqual(result.stdout, '');
+    })) passed++; else failed++;
+  });
+
+  await withHomunculus({
     id: 'conventional-commit-prefixes',
     confidence: 0.91,
     trigger: 'when writing commit messages',
