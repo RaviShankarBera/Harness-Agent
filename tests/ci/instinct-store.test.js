@@ -278,6 +278,19 @@ function runTests() {
     }), 'guidance');
   })) passed++; else failed++;
 
+  if (test('instinctMatchKind keeps punctuation inside a quoted command in one clause', () => {
+    const { instinctMatchKind } = loadStore();
+    const instinct = {
+      id: 'no-hard-reset',
+      confidence: 0.91,
+      trigger: 'when cleaning a checkout',
+      content: "Don't rush it. NEVER run `git clean -fd; git reset --hard`. It's destructive.",
+    };
+    assert.strictEqual(instinctMatchKind(instinct, {
+      command: 'git clean -fd; git reset --hard',
+    }), 'prohibition');
+  })) passed++; else failed++;
+
   if (test('getInstinctConfidenceThreshold rejects hex and exponent overrides', () => {
     withEnv({ ECC_INSTINCT_CONFIDENCE_THRESHOLD: undefined }, () => {
       const { getInstinctConfidenceThreshold, DEFAULT_INSTINCT_CONFIDENCE_THRESHOLD } = loadStore();

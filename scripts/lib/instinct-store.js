@@ -242,9 +242,37 @@ function extractQuotedIdentifiers(text) {
   return identifiers;
 }
 
+// Clause boundaries are sentence punctuation or a newline outside a quoted
+// span, so "NEVER run `git clean -fd; git reset --hard`." stays one clause.
+function splitClauses(text) {
+  const clauses = [];
+  let current = '';
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote) {
+      current += ch;
+      if (ch === quote) quote = null;
+      else if (ch === '\n') quote = null;
+      continue;
+    }
+    if (ch === '\n' || ('.;!?'.includes(ch) && (i + 1 === text.length || /\s/.test(text[i + 1])))) {
+      clauses.push(current);
+      current = '';
+      continue;
+    }
+    // An apostrophe inside a word (don't, it's) never opens a quote.
+    const opens = '"\'`'.includes(ch) && text.indexOf(ch, i + 1) !== -1
+      && !(ch === "'" && /\w/.test(text[i - 1] || ''));
+    if (opens) quote = ch;
+    current += ch;
+  }
+  clauses.push(current);
+  return clauses;
+}
+
 function extractProhibitedClauses(text) {
-  return String(text || '')
-    .split(/[.;!?](?=\s|$)|\n/)
+  return splitClauses(String(text || ''))
     .filter(clause => PROHIBITION_MARKER_RE.test(clause));
 }
 
