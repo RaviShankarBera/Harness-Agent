@@ -37,8 +37,11 @@ function setWSLForTesting(value) {
 const WINDOWS_PATH_PATTERN = /^[A-Za-z]:[\\/]/;
 
 // Compact WSL conversion snippet for inline resolvers embedded in commands and hooks.
-// Uses 8 backslashes in regex source so it preserves shell escaping when inlined into `node -e "..."`.
-const INLINE_WSL_CONVERSION = `try{if(o.platform()==='linux'){var v=f.readFileSync('/proc/version','utf8').toLowerCase();if(v.includes('microsoft')){var m=d.match(/^([A-Za-z]):[\\\\\\\\/]/);if(m){var dl=m[1].toLowerCase();d='/mnt/'+dl+d.slice(2).replace(/\\\\\\\\/g,'/')}}}}catch(_){}`;
+// Contains no backslashes: on native Windows, Claude Code runs hooks as `bash.exe -c "<command>"`
+// and the Windows argv -> MSYS -> bash double-quote layers collapse backslashes unpredictably,
+// which turned the old regex literals into a SyntaxError for every hook (#3746).
+// Backslash is matched via charCodeAt(...)===92 and split(String.fromCharCode(92)) instead.
+const INLINE_WSL_CONVERSION = `try{if(o.platform()==='linux'){var v=f.readFileSync('/proc/version','utf8').toLowerCase();if(v.includes('microsoft')&&d.match(/^[A-Za-z]:/)&&(d.charAt(2)==='/'||d.charCodeAt(2)===92)){d='/mnt/'+d.charAt(0).toLowerCase()+d.slice(2).split(String.fromCharCode(92)).join('/')}}}catch(_){}`;
 
 /**
  * Convert a Windows path to a WSL path.
