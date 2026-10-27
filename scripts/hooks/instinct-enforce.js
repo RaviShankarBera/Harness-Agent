@@ -5,6 +5,8 @@
  * SessionStart injects instincts as advisory text. This hook re-checks
  * Write/Edit/MultiEdit/Bash payloads against the same store and either
  * warns (0.70-0.84) or blocks (>= 0.85) when a deterministic match hits.
+ * Only a match against an explicit prohibition blocks; domain and
+ * affirmative guidance always warns.
  *
  * Compatible with run-with-flags.js via module.exports.run().
  * Fail-open on unreadable stdin, a missing store, or hook errors. Unexpected
@@ -18,6 +20,7 @@ const fs = require('fs');
 const path = require('path');
 const { resolveProjectContext } = require('../lib/observer-sessions');
 const {
+  instinctMatchKind,
   loadInstincts,
   matchInstincts,
   getInstinctConfidenceThreshold,
@@ -91,7 +94,7 @@ function buildWarnMessage(instinct) {
   ].join('\n');
 }
 
-function evaluateMatches(matches) {
+function evaluateMatches(matches, toolInput) {
   if (!Array.isArray(matches) || matches.length === 0) {
     return { verdict: 'none', best: null };
   }
@@ -100,8 +103,14 @@ function evaluateMatches(matches) {
   if (mode === 'warn') {
     return { verdict: 'warn', best };
   }
-  if (mode === 'block' || Number(best.confidence) >= BLOCK_CONFIDENCE) {
+  if (mode === 'block') {
     return { verdict: 'block', best };
+  }
+  const prohibition = matches.find(match =>
+    Number(match.confidence) >= BLOCK_CONFIDENCE
+    && instinctMatchKind(match, toolInput) === 'prohibition');
+  if (prohibition) {
+    return { verdict: 'block', best: prohibition };
   }
   return { verdict: 'warn', best };
 }
@@ -178,7 +187,7 @@ async function run(stdinText) {
 
   const toolInput = data.tool_input || data.toolInput || {};
   const { matches, warnings } = loadMatchesForTool(toolInput);
-  const { verdict, best } = evaluateMatches(matches);
+  const { verdict, best } = evaluateMatches(matches, toolInput);
 
   if (verdict === 'none' || !best) {
     return warnings.length > 0
@@ -266,7 +275,7 @@ async function runCheck(filePath) {
   if (warnings.length > 0) {
     process.stderr.write(`${joinStderr(warnings)}\n`);
   }
-  const { verdict } = evaluateMatches(matches);
+  const { verdict } = evaluateMatches(matches, toolInput);
   process.stdout.write(formatCheckOutput(matches, verdict));
 }
 

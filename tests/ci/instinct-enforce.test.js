@@ -255,6 +255,24 @@ async function runTests() {
   });
 
   await withHomunculus({
+    id: 'conventional-commit-prefixes',
+    confidence: 0.91,
+    trigger: 'when writing commit messages',
+    content: 'Use conventional commit prefixes such as feat: and fix:',
+    domain: 'git',
+  }, async () => {
+    if (await test('affirmative domain guidance at 0.91 warns instead of blocking', async () => {
+      const hook = loadHook();
+      const result = await hook.run(JSON.stringify({
+        tool_name: 'Bash',
+        tool_input: { command: 'git status' },
+      }));
+      assert.strictEqual(result.exitCode, 0);
+      assert.ok(String(result.additionalContext || '').includes('conventional-commit-prefixes'));
+    })) passed++; else failed++;
+  });
+
+  await withHomunculus({
     id: 'no-foo-prefix',
     confidence: 0.91,
     content: 'NEVER foo prefix on new modules',

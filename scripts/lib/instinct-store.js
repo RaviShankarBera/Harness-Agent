@@ -243,7 +243,17 @@ function extractNeverTokens(text) {
   return tokens;
 }
 
-function instinctMatchesToolInput(instinct, toolInput) {
+/**
+ * How an instinct matches a tool payload: `'prohibition'` when the payload
+ * hits something the instinct forbids (a "never X" token, or a quoted
+ * identifier in an instinct that states a prohibition), `'guidance'` for a
+ * domain or affirmative match, or `null` for no match.
+ *
+ * @param {object} instinct
+ * @param {object} toolInput
+ * @returns {'prohibition'|'guidance'|null}
+ */
+function instinctMatchKind(instinct, toolInput) {
   const strings = collectToolStrings(toolInput);
   const filePath = strings.length > 0
     ? String((toolInput && (toolInput.file_path || toolInput.filePath)) || '')
@@ -254,29 +264,34 @@ function instinctMatchesToolInput(instinct, toolInput) {
   const pathOrCommand = `${filePath}\n${command}`;
   const quotedHaystack = [payload, command, basename].join('\n');
 
-  const domain = String(instinct.domain || '').trim();
-  if (domain) {
-    const domainPattern = new RegExp(`\\b${escapeRegExp(domain)}\\b`, 'i');
-    if (domainPattern.test(pathOrCommand)) {
-      return true;
+  const neverTokens = extractNeverTokens(instinct.content);
+  const neverHaystack = payload.toLowerCase();
+  for (const token of neverTokens) {
+    if (neverHaystack.includes(token.toLowerCase())) {
+      return 'prohibition';
     }
   }
 
   const quotedSource = `${instinct.trigger || ''}\n${instinct.content || ''}`;
   for (const identifier of extractQuotedIdentifiers(quotedSource)) {
     if (quotedHaystack.toLowerCase().includes(identifier.toLowerCase())) {
-      return true;
+      return neverTokens.length > 0 ? 'prohibition' : 'guidance';
     }
   }
 
-  const neverHaystack = payload.toLowerCase();
-  for (const token of extractNeverTokens(instinct.content)) {
-    if (neverHaystack.includes(token.toLowerCase())) {
-      return true;
+  const domain = String(instinct.domain || '').trim();
+  if (domain) {
+    const domainPattern = new RegExp(`\\b${escapeRegExp(domain)}\\b`, 'i');
+    if (domainPattern.test(pathOrCommand)) {
+      return 'guidance';
     }
   }
 
-  return false;
+  return null;
+}
+
+function instinctMatchesToolInput(instinct, toolInput) {
+  return instinctMatchKind(instinct, toolInput) !== null;
 }
 
 /**
@@ -313,6 +328,7 @@ module.exports = {
   DEFAULT_MATCH_LIMIT,
   MATCH_STOPWORDS,
   getInstinctConfidenceThreshold,
+  instinctMatchKind,
   parseInstinctFile,
   loadInstincts,
   matchInstincts,
