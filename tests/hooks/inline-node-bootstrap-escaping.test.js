@@ -32,17 +32,21 @@ function test(name, fn) {
 function inlineScripts(hookFile) {
   const config = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'hooks', hookFile), 'utf8'));
   const scripts = [];
+  const unmatched = [];
   for (const [event, entries] of Object.entries(config.hooks || {})) {
     if (!Array.isArray(entries)) continue;
     for (const entry of entries) {
       for (const hook of entry.hooks || []) {
         if (typeof hook.command !== 'string') continue;
+        if (!/^node\s+-e\b/.test(hook.command)) continue;
+        const label = `${hookFile} ${event} ${entry.id || entry.matcher || ''}`.trim();
         const match = hook.command.match(/^node -e "((?:[^"\\]|\\.)*)"/s);
-        if (match) scripts.push({ label: `${hookFile} ${event} ${entry.id || entry.matcher || ''}`.trim(), body: match[1] });
+        if (match) scripts.push({ label, body: match[1] });
+        else unmatched.push(label);
       }
     }
   }
-  return scripts;
+  return { scripts, unmatched };
 }
 
 // Ways a shell layer may treat backslashes before Node receives the -e source.
@@ -55,10 +59,14 @@ const unescapeModes = {
 console.log('\n=== Testing inline node -e hook bootstraps ===\n');
 
 for (const hookFile of ['hooks.json', 'codex-hooks.json']) {
-  const scripts = inlineScripts(hookFile);
+  const { scripts, unmatched } = inlineScripts(hookFile);
 
   test(`${hookFile} has inline node -e bootstraps`, () => {
     assert.ok(scripts.length > 0, `Expected inline node -e commands in ${hookFile}`);
+  });
+
+  test(`${hookFile} every node -e command has an extractable double-quoted script`, () => {
+    assert.deepStrictEqual(unmatched, [], `Could not extract inline script from: ${unmatched.join(', ')}`);
   });
 
   test(`${hookFile} inline scripts contain no backslash escapes other than \\"`, () => {
