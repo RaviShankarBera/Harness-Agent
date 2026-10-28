@@ -465,12 +465,12 @@ function cleanupBrokenOpenCodePlugins(plan) {
           const fullPath = path.join(pluginsDir, name);
           try {
             fs.unlinkSync(fullPath);
-          } catch (error) {
+          } catch (_error) {
             // ignore cleanup errors
           }
         }
       }
-    } catch (error) {
+    } catch (_error) {
       // ignore cleanup errors
     }
   }

@@ -480,9 +480,9 @@ PROMPT
   # "no stdin data received", and exits 1 before reading the analysis file (#2452).
   # Model used for each analysis pass. Default is inherited from ANTHROPIC_MODEL
   # (and the ANTHROPIC_DEFAULT_*_MODEL tier overrides), which is the same path the
-  # interactive session already uses. Set ECC_OBSERVER_MODEL to override, e.g.
-  # ECC_OBSERVER_MODEL=claude-haiku-5-5 for cheaper, faster passes (less thorough
-  # instincts) or ECC_OBSERVER_MODEL=claude-opus-5-5 for deeper pattern extraction.
+  # interactive session already uses. Set ECC_OBSERVER_MODEL to override with a
+  # full model name, e.g. ECC_OBSERVER_MODEL=claude-haiku-5-5 for cheaper, faster
+  # passes (less thorough instincts).
   # IMPORTANT: do NOT pass the model as a --model flag. The CLI handles the model
   # name correctly only when it comes from ANTHROPIC_MODEL; a --model value is
   # rejected with unrecognized_model and hangs the analysis until the watchdog
@@ -495,15 +495,10 @@ PROMPT
   if [ -n "$ECC_OBSERVER_MODEL" ]; then
     MODEL_FLAG="--model $ECC_OBSERVER_MODEL"
   fi
-  # analysis mid-run.
   # Job control gives the background Claude command its own process group on
   # Bash, including macOS's Bash 3.2 and Git Bash. That lets timeout/signal
   # cleanup terminate tool subprocesses as well as the direct CLI process.
   set -m
-  MODEL_FLAG=""
-  if [ -n "$ECC_OBSERVER_MODEL" ]; then
-    MODEL_FLAG="--model $ECC_OBSERVER_MODEL"
-  fi
   ECC_SKIP_OBSERVE=1 ECC_HOOK_PROFILE=minimal claude $MODEL_FLAG --max-turns "$max_turns" --print \
     --allowedTools "Read,Write" \
     -p "$prompt_content" < /dev/null >&8 2>> "$LOG_FILE" &
