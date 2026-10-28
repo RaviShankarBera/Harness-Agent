@@ -37,8 +37,9 @@ function setWSLForTesting(value) {
 const WINDOWS_PATH_PATTERN = /^[A-Za-z]:[\\/]/;
 
 // Compact WSL conversion snippet for inline resolvers embedded in commands and hooks.
-// Uses 8 backslashes in regex source so it preserves shell escaping when inlined into `node -e "..."`.
-const INLINE_WSL_CONVERSION = `try{if(o.platform()==='linux'){var v=f.readFileSync('/proc/version','utf8').toLowerCase();if(v.includes('microsoft')){var m=d.match(/^([A-Za-z]):[\\\\\\\\/]/);if(m){var dl=m[1].toLowerCase();d='/mnt/'+dl+d.slice(2).replace(/\\\\\\\\/g,'/')}}}}catch(_){}`;
+// Avoids backslash literals (uses String.fromCharCode(92)) so shells that unescape `node -e "..."`
+// differently, such as native Windows, cannot corrupt the source.
+const INLINE_WSL_CONVERSION = `try{if(o.platform()==='linux'){var v=f.readFileSync('/proc/version','utf8').toLowerCase();if(v.includes('microsoft')){var B=String.fromCharCode(92),m=d.match(/^([A-Za-z]):(.)/);if(m&&(m[2]==='/'||m[2]===B)){var dl=m[1].toLowerCase();d='/mnt/'+dl+d.slice(2).split(B).join('/')}}}}catch(_){}`;
 
 /**
  * Convert a Windows path to a WSL path.

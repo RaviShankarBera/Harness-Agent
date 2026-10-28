@@ -11,11 +11,10 @@ function test(name, run) {
 }
 // These tests execute extracted JavaScript with simulated POSIX path/OS/filesystem APIs.
 // Serialized Bash quoting is covered separately by serialized-hook-wsl.test.js.
-test('INLINE_RESOLVE extracted expression converts Windows CLAUDE_CONFIG_DIR on simulated WSL', () => {
+function runInlineResolve(configDirLiteral) {
   const { INLINE_RESOLVE } = require('../../scripts/lib/resolve-ecc-root');
-  // INLINE_RESOLVE is formatted for embedding inside bash double-quoted `node -e "..."` strings,
-  // where `\\\\` is unescaped by the shell to `\\` before Node parses the JS source.
-  const jsResolveExpr = INLINE_RESOLVE.replace(/\\\\\\\\/g, '\\\\');
+  // INLINE_RESOLVE contains no backslashes, so it runs unchanged after any shell unescaping.
+  const jsResolveExpr = INLINE_RESOLVE;
   const scriptContent = `
     'use strict';
     const Module = require('module');
@@ -54,14 +53,22 @@ test('INLINE_RESOLVE extracted expression converts Windows CLAUDE_CONFIG_DIR on 
       return originalLoad.call(this, request, parent, isMain);
     };
     process.env.CLAUDE_PLUGIN_ROOT = '';
-    process.env.CLAUDE_CONFIG_DIR = 'C:\\\\Users\\\\x\\\\.claude';
+    process.env.CLAUDE_CONFIG_DIR = ${configDirLiteral};
     const result = ${jsResolveExpr};
     process.stdout.write(result + '\\n');
   `;
 
   const result = spawnSync(process.execPath, ['-e', scriptContent], { encoding: 'utf8', timeout: 10000, env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot } });
   assert.strictEqual(result.status, 0, `Resolver subprocess failed: ${result.stderr}`);
-  assert.strictEqual(result.stdout.trim(), '/mnt/c/Users/x/.claude');
+  return result.stdout.trim();
+}
+
+test('INLINE_RESOLVE extracted expression converts Windows CLAUDE_CONFIG_DIR on simulated WSL', () => {
+  assert.strictEqual(runInlineResolve(JSON.stringify('C:\\Users\\x\\.claude')), '/mnt/c/Users/x/.claude');
+});
+
+test('INLINE_RESOLVE extracted expression converts forward-slash Windows CLAUDE_CONFIG_DIR on simulated WSL', () => {
+  assert.strictEqual(runInlineResolve(JSON.stringify('C:/Users/x/.claude')), '/mnt/c/Users/x/.claude');
 });
 
 test('codex-hooks.json extracted resolver converts Windows CLAUDE_CONFIG_DIR to /mnt/... on simulated WSL', () => {
@@ -83,7 +90,7 @@ test('codex-hooks.json extracted resolver converts Windows CLAUDE_CONFIG_DIR to 
     }
   }
   assert.ok(hookResolverJS, 'Could not extract inline resolver IIFE from codex-hooks.json');
-  const jsResolveExpr = hookResolverJS.replace(/\\\\\\\\/g, '\\\\');
+  const jsResolveExpr = hookResolverJS;
 
   const scriptContent = `
     'use strict';
