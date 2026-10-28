@@ -174,9 +174,9 @@ test('analyze_observations uses tail to sample recent observations', () => {
   assert.ok(content.includes('tail -n "$MAX_ANALYSIS_LINES"'), 'Should use tail to limit observations sent to LLM');
 });
 
-test('default max analysis lines is 500', () => {
+test('default max analysis lines is 25', () => {
   const content = fs.readFileSync(observerLoopPath, 'utf8');
-  assert.ok(content.includes('ECC_OBSERVER_MAX_ANALYSIS_LINES:-500'), 'Default should sample last 500 lines');
+  assert.ok(/MAX_ANALYSIS_LINES="\$\{ECC_OBSERVER_MAX_ANALYSIS_LINES:-25\}"/.test(content), 'Default should sample last 25 lines');
 });
 
 test('analysis temp file is created and cleaned up', () => {
@@ -465,18 +465,28 @@ test('allowedTools includes Write permission', () => {
 
 test('claude invocation still includes ECC_SKIP_OBSERVE and ECC_HOOK_PROFILE guards', () => {
   const content = fs.readFileSync(observerLoopPath, 'utf8');
-  // Find the claude execution line(s)
+  // Find the claude execution line
   const lines = content.split('\n');
-  const claudeLine = lines.find(l => l.includes('claude --model'));
-  assert.ok(claudeLine, 'Should find claude --model invocation line');
-  // Model is configurable via ECC_OBSERVER_MODEL but must still default to haiku.
+  const claudeLine = lines.find(l => l.includes('claude $MODEL_FLAG'));
+  assert.ok(claudeLine, 'Should find claude $MODEL_FLAG invocation line');
+  // --model must only be passed when ECC_OBSERVER_MODEL is explicitly set.
+  // Unconditional --model breaks ANTHROPIC_MODEL inheritance and hangs the
+  // analysis with unrecognized_model (see comment above MODEL_FLAG in observer-loop.sh).
+  const modelFlagLines = lines.filter(l => /MODEL_FLAG=/.test(l));
   assert.ok(
-    claudeLine.includes('${ECC_OBSERVER_MODEL:-haiku}'),
-    `claude --model should default to haiku and honor ECC_OBSERVER_MODEL, got: ${claudeLine}`
+    modelFlagLines.some(l => l.trim() === 'MODEL_FLAG=""'),
+    `MODEL_FLAG should default to empty so ANTHROPIC_MODEL is inherited, got: ${modelFlagLines.join(' | ')}`
+  );
+  assert.ok(
+    modelFlagLines.some(l => l.includes('--model $ECC_OBSERVER_MODEL')),
+    `MODEL_FLAG should honor an explicit ECC_OBSERVER_MODEL, got: ${modelFlagLines.join(' | ')}`
+  );
+  assert.ok(
+    !content.includes('${ECC_OBSERVER_MODEL:-'),
+    'MODEL_FLAG must not hard-default the model (e.g. :-haiku) — inherit ANTHROPIC_MODEL when unset'
   );
   // The env vars are on the same line as the claude command
-  const claudeLineIndex = lines.indexOf(claudeLine);
-  const fullCommand = lines.slice(Math.max(0, claudeLineIndex - 1), claudeLineIndex + 3).join(' ');
+  const fullCommand = lines.slice(Math.max(0, lines.indexOf(claudeLine) - 1), lines.indexOf(claudeLine) + 3).join(' ');
   assert.ok(fullCommand.includes('ECC_SKIP_OBSERVE=1'), 'claude invocation should include ECC_SKIP_OBSERVE=1 guard');
   assert.ok(fullCommand.includes('ECC_HOOK_PROFILE=minimal'), 'claude invocation should include ECC_HOOK_PROFILE=minimal guard');
 });

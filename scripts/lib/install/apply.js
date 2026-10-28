@@ -446,9 +446,40 @@ function openCodeActivationCandidates(plan, previousOperations) {
   return candidates;
 }
 
+function cleanupBrokenOpenCodePlugins(plan) {
+  const pluginsDirs = [
+    path.join(plan.targetRoot, 'plugins'),
+    path.join(plan.targetRoot, '.opencode', 'plugins'),
+  ];
+  for (const pluginsDir of pluginsDirs) {
+    if (!fs.existsSync(pluginsDir)) {
+      continue;
+    }
+    try {
+      const entries = fs.readdirSync(pluginsDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        const name = entry.name;
+        // Remove backup files that might cause plugin loading issues
+        if (/\.bak(\.|$)/.test(name) || name.includes('.bak-') || name.endsWith('.broken')) {
+          const fullPath = path.join(pluginsDir, name);
+          try {
+            fs.unlinkSync(fullPath);
+          } catch (_error) {
+            // ignore cleanup errors
+          }
+        }
+      }
+    } catch (_error) {
+      // ignore cleanup errors
+    }
+  }
+}
+
 function activationIsInactive(kind, operation, content) {
   if (kind === 'plugin') {
-    return content.toString('utf8') === getDisabledOpenCodePluginContent();
+    return content.toString('utf8')
+      === getDisabledOpenCodePluginContent(operation.sourceRelativePath || operation.destinationPath);
   }
   const text = content.toString('utf8');
   const relativePath = operation.sourceRelativePath || operation.destinationPath;
@@ -465,6 +496,7 @@ function activationIsInactive(kind, operation, content) {
 }
 
 function assertOpenCodeHookDeactivationReady(plan, options = {}) {
+  cleanupBrokenOpenCodePlugins(plan);
   if (!shouldDisableOpenCodeHooks(plan)) {
     return new Map();
   }
