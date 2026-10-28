@@ -926,8 +926,7 @@ function isDestructiveQuoteAware(raw, depth = 0) {
   for (const body of collectExecutableBodies(executable)) {
     for (const tokens of quoteAwareSegments(body)) {
       if (tokens.length === 0) continue;
-      if (isDestructiveRm(tokens)) return true;
-      if (isDestructiveGit(tokens)) return true;
+      if (isDestructiveRmOrGit(tokens)) return true;
       if (isDestructiveDd(tokens)) return true;
       if (isDestructiveSqlClient(tokens)) return true;
       if (isDestructiveFindExec(tokens)) return true;
@@ -984,6 +983,23 @@ function commandBasename(token) {
 function isDestructiveDd(tokens, allowShellBuiltins = true) {
   const argv = unwrapLeadWrappers(tokens, allowShellBuiltins, true);
   return commandBasename(argv[0]) === 'dd' && argv.slice(1).some(operand => /^(?:if|of)=/i.test(operand));
+}
+
+/**
+ * rm/Git check on the segment as written and on the command it actually runs.
+ * Both detectors key on argv[0], so `sudo rm -rf build`, `command rm -rf build`
+ * and `env git reset --hard` read as calls to the wrapper and passed (#2832).
+ * unwrapLeadWrappers resolves the wrapped command word the same way the dd
+ * and `sh -c` paths already do. Argument text is left alone: in
+ * `echo sudo rm -rf x` the resolved command is still `echo`.
+ *
+ * @param {string[]} tokens
+ * @returns {boolean}
+ */
+function isDestructiveRmOrGit(tokens) {
+  if (isDestructiveRm(tokens) || isDestructiveGit(tokens)) return true;
+  const argv = unwrapLeadWrappers(tokens, true, true);
+  return argv.length > 0 && (isDestructiveRm(argv) || isDestructiveGit(argv));
 }
 
 /**
@@ -1392,9 +1408,7 @@ function isDestructiveBash(command) {
     const stripped = stripQuotedStrings(segment);
     if (DESTRUCTIVE_SQL.test(stripped)) return true;
     if (extra && extra.test(stripped)) return true;
-    const tokens = tokenize(segment);
-    if (isDestructiveRm(tokens)) return true;
-    if (isDestructiveGit(tokens)) return true;
+    if (isDestructiveRmOrGit(tokenize(segment))) return true;
   }
 
   // Quote-aware pass: closes the quoted-command-word, newline-separator,

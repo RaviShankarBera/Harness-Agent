@@ -670,6 +670,38 @@ function runDdRegressionTests() {
         assert.deepStrictEqual(hook.classifyDestructiveCommand('Bash', command), []);
       });
     }
+    // #2832: rm/Git behind a command wrapper read as a call to the wrapper.
+    const wrappedRmGitDestructive = [
+      'sudo rm -rf build',
+      'sudo -u root rm -rf build',
+      'doas rm -rf build',
+      'command rm -rf build',
+      'env git reset --hard',
+      'env FOO=1 git reset --hard',
+      'sudo git push --force origin main',
+      'cd repo && sudo rm -rf build',
+      "sudo 'rm' -rf build",
+      'nohup rm -rf build',
+      'exec git reset --hard'
+    ];
+    const wrappedRmGitPassive = [
+      'sudo rm build',
+      'env git status',
+      'command -v rm',
+      'echo sudo rm -rf build',
+      'sudo -u rm echo -rf build',
+      "printf '%s' 'env git reset --hard'"
+    ];
+    for (const [commands, expected] of [
+      [wrappedRmGitDestructive, ['gateguard.bash-compatible-destructive']],
+      [wrappedRmGitPassive, []]
+    ]) {
+      for (const command of commands) {
+        check(`wrapped rm/git classification: ${JSON.stringify(command)}`, () => {
+          assert.deepStrictEqual(hook.classifyDestructiveCommand('Bash', command), expected);
+        });
+      }
+    }
     for (const [command, denied] of [
       ['sudo -u root dd if=input', true],
       ["sh -c 'echo $(dd if=input)'", true],
