@@ -35,11 +35,11 @@ function inlineScripts(hookFile) {
   const unmatched = [];
   for (const [event, entries] of Object.entries(config.hooks || {})) {
     if (!Array.isArray(entries)) continue;
-    for (const entry of entries) {
-      for (const hook of entry.hooks || []) {
+    for (const [entryIndex, entry] of entries.entries()) {
+      for (const [hookIndex, hook] of (entry.hooks || []).entries()) {
         if (typeof hook.command !== 'string') continue;
         if (!/^node\s+-e\b/.test(hook.command)) continue;
-        const label = `${hookFile} ${event} ${entry.id || entry.matcher || ''}`.trim();
+        const label = `${hookFile} ${event}[${entryIndex}].hooks[${hookIndex}] ${entry.id || entry.matcher || ''}`.trim();
         const match = hook.command.match(/^node -e "((?:[^"\\]|\\.)*)"/s);
         if (match) scripts.push({ label, body: match[1] });
         else unmatched.push(label);
